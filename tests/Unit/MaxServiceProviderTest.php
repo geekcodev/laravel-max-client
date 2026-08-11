@@ -9,6 +9,7 @@ use GeekCo\LaravelMaxClient\MaxServiceProvider;
 use GeekCo\LaravelMaxClient\Support\Config;
 use GeekCo\LaravelMaxClient\Tests\Support\MockHttpClient;
 use GeekCo\LaravelMaxClient\Tests\TestCase;
+use GeekCo\LaravelMaxClient\WebApp\WebAppContext;
 use GeekCo\LaravelMaxClient\Webhook\HandleMaxUpdateJob;
 use GeekCo\LaravelMaxClient\Webhook\MaxUpdateReceived;
 use GeekCo\MaxPhpClient\ApiClient;
@@ -18,6 +19,7 @@ use GeekCo\MaxPhpClient\Dto\Update;
 use GeekCo\MaxPhpClient\Exception\ApiException;
 use GeekCo\MaxPhpClient\Exception\RateLimitException;
 use GeekCo\MaxPhpClient\LongPolling\LongPollingRunner;
+use GeekCo\MaxPhpClient\Security\WebAppDataValidator;
 use GuzzleHttp\Psr7\Response;
 use Illuminate\Contracts\Events\Dispatcher;
 use Illuminate\Support\Facades\Queue;
@@ -121,6 +123,24 @@ final class MaxServiceProviderTest extends TestCase
     public function testHttpClientFactoryIsBound(): void
     {
         $this->assertInstanceOf(HttpClientFactory::class, $this->app->make(HttpClientFactory::class));
+    }
+
+    public function testWebAppDataValidatorIsBoundAsSingleton(): void
+    {
+        $this->app['config']->set(MaxServiceProvider::CONFIG_KEY . '.webapp.max_age', 3600);
+
+        $validator = $this->app->make(WebAppDataValidator::class);
+
+        $this->assertInstanceOf(WebAppDataValidator::class, $validator);
+        $this->assertSame($validator, $this->app->make(WebAppDataValidator::class));
+    }
+
+    public function testWebAppContextIsBoundAsSingleton(): void
+    {
+        $context = $this->app->make(WebAppContext::class);
+
+        $this->assertInstanceOf(WebAppContext::class, $context);
+        $this->assertSame($context, $this->app->make(WebAppContext::class));
     }
 
     public function testLongPollingRunnerIsBoundAsSingleton(): void

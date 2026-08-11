@@ -116,4 +116,19 @@ return [
         'break_on_failure' => filter_var(env('MAX_POLLING_BREAK_ON_FAILURE', true), FILTER_VALIDATE_BOOLEAN),
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | WebAppData (мини-приложение)
+    |--------------------------------------------------------------------------
+    |
+    | Верификация стартовых данных мини-приложения (HMAC-SHA256, ядро
+    | WebAppDataValidator). max_age — срок жизни auth_date в секундах
+    | (replay-защита; 0 — не проверять свежесть).
+    |
+    */
+
+    'webapp' => [
+        'max_age' => (int) env('MAX_WEBAPP_MAX_AGE', 86400),
+    ],
+
 ];

@@ -1,9 +1,14 @@
 # Long Polling для локальной разработки и запуска
 
 Вебхук MAX требует публичного домена с HTTPS и доверенным CA (полная цепочка Минцифры), поэтому для локальной разработки
-используется **Long Polling** — команда
+по умолчанию используется **Long Polling** — команда
 `php artisan max:listen`. Апдейты обрабатываются тем же слушателем `MaxUpdateReceived`, что и вебхук (см.
 `examples/webhook-listener.php`).
+
+Альтернатива — протестировать настоящий вебхук через туннель до локального приложения
+(`cloudflared tunnel --url http://localhost:8000`, `ngrok http 8000`) и команды подписок
+`php artisan max:subscribe https://<tunnel>/max/webhook` / `max:unsubscribe` (HTTPS + `webhook.allowed_hosts`).
+После отписки для подписки Long Polling снова возвращается `max:listen`.
 
 ## 1. Конфигурация (.env)
 

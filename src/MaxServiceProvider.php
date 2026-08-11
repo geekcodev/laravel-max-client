@@ -5,8 +5,11 @@ declare(strict_types=1);
 namespace GeekCo\LaravelMaxClient;
 
 use GeekCo\LaravelMaxClient\Console\MaxListenCommand;
+use GeekCo\LaravelMaxClient\Console\MaxSubscribeCommand;
+use GeekCo\LaravelMaxClient\Console\MaxUnsubscribeCommand;
 use GeekCo\LaravelMaxClient\Http\HttpClientFactory;
 use GeekCo\LaravelMaxClient\Support\Config;
+use GeekCo\LaravelMaxClient\WebApp\WebAppContext;
 use GeekCo\LaravelMaxClient\Webhook\HandleMaxUpdateJob;
 use GeekCo\LaravelMaxClient\Webhook\MaxUpdateReceived;
 use GeekCo\LaravelMaxClient\Webhook\MaxWebhookController;
@@ -16,6 +19,7 @@ use GeekCo\MaxPhpClient\Dto\Update;
 use GeekCo\MaxPhpClient\LongPolling\LongPollingRunner;
 use GeekCo\MaxPhpClient\RateLimit\RateLimiter;
 use GeekCo\MaxPhpClient\Retry\RetryStrategy;
+use GeekCo\MaxPhpClient\Security\WebAppDataValidator;
 use Illuminate\Contracts\Container\Container;
 use Illuminate\Contracts\Events\Dispatcher;
 use Illuminate\Routing\Router;
@@ -37,6 +41,19 @@ final class MaxServiceProvider extends ServiceProvider
         $this->app->singleton(
             HttpClientFactory::class,
             static fn (Container $app): HttpClientFactory => new HttpClientFactory($app, $app->make(Config::class)),
+        );
+
+        $this->app->singleton(
+            WebAppDataValidator::class,
+            static fn (Container $app): WebAppDataValidator => new WebAppDataValidator(
+                accessToken: $app->make(Config::class)->apiToken(),
+                maxAge: $app->make(Config::class)->webappMaxAge(),
+            ),
+        );
+
+        $this->app->singleton(
+            WebAppContext::class,
+            static fn (Container $app): WebAppContext => new WebAppContext($app->make(WebAppDataValidator::class)),
         );
 
         $this->app->singleton(ApiClient::class, static function (Container $app): ApiClient {
@@ -86,7 +103,11 @@ final class MaxServiceProvider extends ServiceProvider
     public function boot(): void
     {
         if ($this->app->runningInConsole()) {
-            $this->commands([MaxListenCommand::class]);
+            $this->commands([
+                MaxListenCommand::class,
+                MaxSubscribeCommand::class,
+                MaxUnsubscribeCommand::class,
+            ]);
 
             $this->publishes([
                 __DIR__ . '/../config/laravel-max-client.php' => $this->app->configPath(self::CONFIG_KEY . '.php'),
