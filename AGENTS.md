@@ -43,10 +43,13 @@
 
 ```
 config/laravel-max-client.php      publishable-конфиг (echo php artisan vendor:publish)
-examples/                          рабочие примеры использования (фасад, webhook-listener, PSR-18, long-polling)
+examples/                          рабочие примеры (фасад, webhook-listener, PSR-18, webapp-mini-app, long-polling)
 src/
   MaxServiceProvider.php           composition root: publish, bindings, регистрация роута/фасада
   Console/MaxListenCommand.php     artisan max:listen: Long Polling для локальной разработки (--once)
+  Console/MaxSubscribeCommand.php  artisan max:subscribe: регистрация webhook-подписки (HTTPS + allowed_hosts)
+  Console/MaxUnsubscribeCommand.php artisan max:unsubscribe: удаление webhook-подписки
+  WebApp/WebAppContext.php         верификация WebAppData мини-приложения (resolve/verify из Request)
   Facades/Max.php                  фасад поверх ApiClient (из контейнера)
   Contracts/MaxClient.php          интерфейс-фасад-прокси (необязательный, решает KISS при реализации)
   Support/Config.php               stateless readonly-доступ к config('max.*') (live-read из репозитория)
@@ -77,12 +80,14 @@ scripts/check-coverage.php         порог покрытия строк (по 
 
 ### Слои
 
-| Слой        | Классы                                                                 | Назначение                                           |
-|-------------|------------------------------------------------------------------------|------------------------------------------------------|
-| Composition | `MaxServiceProvider`, `HttpClientFactory`, `Support\Config`            | Сборка зависимостей из контейнера Laravel, конфиг    |
-| Facade      | `Facades\Max`                                                          | Статический доступ к `ApiClient` из кода приложения  |
-| Webhook     | `MaxWebhookController`, `VerifyMaxWebhookSecret`, `HandleMaxUpdateJob` | Приём/верификация апдейтов, постановка в очередь     |
-| Core        | `GeekCo\MaxPhpClient\*` (зависимость)                                  | Транспорт, DTO, ретраи, rate limit, security, upload |
+| Слой          | Классы                                                                 | Назначение                                                          |
+|---------------|------------------------------------------------------------------------|---------------------------------------------------------------------|
+| Composition   | `MaxServiceProvider`, `HttpClientFactory`, `Support\Config`            | Сборка зависимостей из контейнера Laravel, конфиг                   |
+| Facade        | `Facades\Max`                                                          | Статический доступ к `ApiClient` из кода приложения                 |
+| WebApp        | `WebApp\WebAppContext`                                                 | Верификация WebAppData мини-приложения (ядра `WebAppDataValidator`) |
+| Webhook       | `MaxWebhookController`, `VerifyMaxWebhookSecret`, `HandleMaxUpdateJob` | Приём/верификация апдейтов, постановка в очередь                    |
+| Subscriptions | `MaxSubscribeCommand`, `MaxUnsubscribeCommand`                         | Управление webhook-подписками (HTTPS, allowed_hosts)                |
+| Core          | `GeekCo\MaxPhpClient\*` (зависимость)                                  | Транспорт, DTO, ретраи, rate limit, security, upload                |
 
 ### Контракты
 
@@ -123,6 +128,21 @@ scripts/check-coverage.php         порог покрытия строк (по 
   нет публичного домена. Использует ядро `LongPollingRunner` (не дублировать цикл!) и ставит те же `HandleMaxUpdateJob`
   в `webhook.queue` — единый механизм доставки с вебхуком. `--once` — одна партия (для cron/смоука). `long_polling.*`
   конфиг (env `MAX_POLLING_*`); `break_on_failure=true` по умолчанию (для долгой работы в dev — `false`).
+- **`WebApp\WebAppContext`** (`src/WebApp/WebAppContext.php`): верификация стартовых данных мини-приложения. Конструктор
+  принимает `WebAppDataValidator` из ядра (singleton в контейнере, token из `api_token`, maxAge из
+  `config('laravel-max-client.webapp.max_age')`). Методы:
+    - `resolve(Request): ?WebAppIdentity` — верифицирует `?WebAppData=...` из query и возвращает идентичность
+      (user/chat)
+      либо `null` при невалидных/просроченных данных. Это **обязательная** проверка — без неё любой может подделать
+      `user_id`/`chat_id`;
+    - `verify(Request): bool` — булева проверка без резолва identity. Роутинг в мини-приложении — приложение: пакет
+      поставляет только сервис. Значение `auth_date` сверяется с
+      `webapp.max_age` (env `MAX_WEBAPP_MAX_AGE`, default 86400; `0` — не проверять).
+- **Подписки** (`MaxSubscribeCommand`, `MaxUnsubscribeCommand`): `php artisan max:subscribe <url>` /
+  `max:unsubscribe <url>`. URL — только HTTPS; при заданном `config('laravel-max-client.webhook.allowed_hosts')` хост
+  сверяется до создания подписки (A10). Подписка — на рекомендованный набор апдейтов (`UpdateType::*`), секрет из
+  `MAX_WEBHOOK_SECRET`. Активная подписка отключает Long Polling. Предупреждение без секрета: подписка создастся, но
+  роут не зарегистрируется (fail-closed).
 - **Токен аутентификации** — заголовок `Authorization: <token>` **без** `Bearer`, не в query (гарантирует ядро).
 - **Ошибки**: пакет прокидывает исключения ядра (`GeekCo\MaxPhpClient\Exception\MaxApiException` и наследники). В
   вебхук-контроллере/джобе они логируются без чувствительных данных (code + message ошибки API допустимы; vcf_info,
@@ -138,7 +158,8 @@ scripts/check-coverage.php         порог покрытия строк (по 
 - Тесты обязательны для нового кода: unit на компоненты пакета; HTTP-слой — через `tests/Support/MockHttpClient`
   (PSR-18) или подмену `ClientInterface` в контейнере Testbench. Интеграционные — read-only, группа `integration`, без
   токена `markTestSkipped` (не падать).
-- `composer.json` constraints на момент разработки: `php ^8.4`, `geekcodev/max-php-client ^1.0`,
+- `composer.json` constraints на момент разработки: `php ^8.4`, `geekcodev/max-php-client ^1.0.1` (WebAppDataValidator
+  появился в v1.0.1 ядра — версия ниже не резолвит классы WebApp),
   `laravel/framework ^12.0|^13.0`, `guzzlehttp/guzzle ^7.15` (обязателен как PSR-18 по умолчанию),
   `illuminate/support`/`illuminate/queue`/`illuminate/routing` — через `laravel/framework`; dev — Testbench под
   поддерживаемую версию Laravel, phpunit ^11.5, phpstan ^2.0, friendsofphp/php-cs-fixer ^3.0. Точные версии Testbench
@@ -151,11 +172,12 @@ scripts/check-coverage.php         порог покрытия строк (по 
 - **A03** — не доверять входящим данным: вебхук-body, query/path-параметры, поля JSON (валидация в DTO ядра). Никаких
   конкатенаций URL вручную — только PSR-7 (ядро).
 - **A04** — не доверять телу вебхука: жёсткий `json_decode(..., JSON_THROW_ON_ERROR)` через ядро, валидация структуры
-  `Update`; неизвестные `update_type` не валят обработку.
+  `Update`; неизвестные `update_type` не валят обработку. WebAppData мини-приложения — обязательно через
+  `WebAppContext` (HMAC + max_age), иначе подделка `user_id`/`chat_id`.
 - **A05** — publishable-конфиг с безопасными дефолтами; `php artisan config:cache` безопасен для `env()`
   (использовать только на этапе конфига); секреты не попадают в `config:show` без необходимости (документировать
   маскирование при выводе).
-- **A06/A08** — актуальные зависимости: PHP ^8.4, ядро ^1.0, `composer audit` в Gate и CI; CI на push/PR.
+- **A06/A08** — актуальные зависимости: PHP ^8.4, ядро ^1.0.1, `composer audit` в Gate и CI; CI на push/PR.
 - **A07** — все сравнения секретов — только `hash_equals` (ядро + middleware вебхука).
 - **A09** — не логировать: access token, webhook secret, `vcf_info`, callback payload, тела запросов с токеном.
   Логировать статус/код/сообщение ошибки API (в коде ядра сообщения не содержат токенов).
@@ -246,7 +268,9 @@ source .env && docker run --rm --network host \
 10. Версионирование — только git-тегами; `version` в composer.json не указывать.
 11. Вебхук-роут вне CSRF (иначе все запросы вернут 419) — но защищён секретом + throttle.
 12. Long Polling (`max:listen`) — только для dev; активная webhook-подписка его отключает.
-13. Пакет — тонкий адаптер: не переписывать логику ядра, только делегировать.
+13. WebAppData мини-приложения — только через `WebAppContext` (не доверять `?WebAppData=...` без верификации HMAC).
+14. `max:subscribe`/`max:unsubscribe` — только HTTPS-URL; `allowed_hosts` проверяется до создания подписки.
+15. Пакет — тонкий адаптер: не переписывать логику ядра, только делегировать.
 
 ## 10. Чек-лист «production-grade» (самооценка при доработках)
 

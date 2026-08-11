@@ -116,6 +116,11 @@ final readonly class Config
         return $this->bool('long_polling.break_on_failure', true);
     }
 
+    public function webappMaxAge(): int
+    {
+        return $this->int('webapp.max_age', 86400);
+    }
+
     private function string(string $key, string $default): string
     {
         $value = config(self::KEY . '.' . $key, $default);
