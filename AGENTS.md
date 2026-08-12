@@ -43,7 +43,7 @@
 
 ```
 config/laravel-max-client.php      publishable-конфиг (echo php artisan vendor:publish)
-examples/                          рабочие примеры (фасад, webhook-listener, PSR-18, webapp-mini-app, long-polling)
+examples/                          рабочие примеры (фасад, webhook-listener, PSR-18, webapp, long-polling)
 src/
   MaxServiceProvider.php           composition root: publish, bindings, регистрация роута/фасада
   Console/MaxListenCommand.php     artisan max:listen: Long Polling для локальной разработки (--once)

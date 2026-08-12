@@ -72,7 +72,7 @@ Max::sendMessage(
 Полные рабочие примеры — в каталоге [`examples/`](examples/):
 `basic-usage.php` (фасад), `webhook-listener.php` (обработка апдейтов),
 `custom-http-client.php` (подмена PSR-18 клиента),
-`webapp-mini-app.php` (верификация WebAppData мини-приложения),
+`webapp.php` (верификация WebAppData мини-приложения),
 `long-polling-local-dev.md` (настройка и запуск Long Polling локально и в Docker, а также тест настоящего вебхука через
 туннель + `max:subscribe`/`max:unsubscribe`).
 
@@ -96,7 +96,7 @@ $this->app->instance(\Psr\Http\Client\ClientInterface::class, $yourClient);
 use GeekCo\LaravelMaxClient\WebApp\WebAppContext;
 use Illuminate\Http\Request;
 
-class MiniAppController
+class WebAppController
 {
     public function __invoke(Request $request, WebAppContext $webAppContext)
     {

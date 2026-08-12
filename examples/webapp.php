@@ -15,7 +15,7 @@ use GeekCo\LaravelMaxClient\WebApp\WebAppContext;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
 
-final class MiniAppController
+final class WebAppController
 {
     public function __invoke(Request $request, WebAppContext $webAppContext): View
     {
@@ -31,7 +31,7 @@ final class MiniAppController
             'chat_id' => $identity->chatId,
         ]);
 
-        return view('mini-app', [
+        return view('webapp', [
             'user_id' => $identity->userId,
             'chat_id' => $identity->chatId,
         ]);
