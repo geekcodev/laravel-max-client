@@ -39,7 +39,7 @@ final class MaxSubscribeCommand extends Command
         }
 
         try {
-            $subscription = $api->createSubscription(
+            $api->createSubscription(
                 url: $url,
                 updateTypes: $this->updateTypes(),
                 secret: $secret,
@@ -50,7 +50,7 @@ final class MaxSubscribeCommand extends Command
             return self::FAILURE;
         }
 
-        $this->info("Подписка создана: {$subscription->url}");
+        $this->info("Подписка создана: {$url}");
 
         return self::SUCCESS;
     }
