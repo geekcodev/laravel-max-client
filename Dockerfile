@@ -5,3 +5,5 @@ ARG INSTALL_XDEBUG=false
 RUN if [ "${INSTALL_XDEBUG}" = "true" ]; then \
       pecl install xdebug-3.4.7 && docker-php-ext-enable xdebug; \
     fi
+
+COPY docker/config/usr/local/etc/php/conf.d/40-custom.ini /usr/local/etc/php/conf.d/40-custom.ini

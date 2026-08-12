@@ -34,12 +34,10 @@ final class MaxWebhookListener
         switch ($update->updateType) {
             case UpdateType::BotAdded:
             case UpdateType::BotStarted:
-                // Сохранить chat_id — это источник истины для будущей рассылки
-                // (GET /chats deprecated). chat_id может быть null — только для
-                // личных диалогов доступен user_id из $update->user.
-                if ($update->chatId !== null) {
-                    \App\Models\MaxChat::firstOrCreate(['chat_id' => $update->chatId]);
-                }
+                // Реестр чатов bot_chats ведёт пакет (PersistBotChatListener,
+                // MAX_CHATS_ENABLED=true) — GET /chats deprecated, chat_id
+                // хранится через подписку на эти апдейты. Здесь — только
+                // бизнес-обработка события.
 
                 break;
 

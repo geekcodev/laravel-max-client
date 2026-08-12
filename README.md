@@ -36,17 +36,24 @@ MAX_API_TOKEN=your-bot-access-token
 
 Все доступные переменные (имена см. в `.env.example`):
 
-| Переменная            | По умолчанию                   | Описание                                                        |
-|-----------------------|--------------------------------|-----------------------------------------------------------------|
-| `MAX_API_TOKEN`       | —                              | Токен бота (заголовок `Authorization`)                          |
-| `MAX_BASE_URI`        | `https://platform-api2.max.ru` | Базовый URI API (домен `platform-api2`)                         |
-| `MAX_WEBHOOK_ENABLED` | `false`                        | Регистрировать вебхук-роут                                      |
-| `MAX_WEBHOOK_SECRET`  | —                              | Секрет вебхука (без него роут не включается)                    |
-| `MAX_WEBHOOK_QUEUE`   | `default`                      | Очередь для джобов обработки Update                             |
-| `MAX_WEBHOOK_PATH`    | `/max/webhook`                 | Путь вебхук-роута                                               |
-| `MAX_RETRY_*`         | 3 / 1 / 30 / 2 / false         | Ретраи (попытки/базовая/макс. задержка/фактор/не-идемпотентные) |
-| `MAX_RATE_LIMIT_*`    | 2.0 / 2.0                      | Token bucket: токенов в секунду / максимум                      |
-| `MAX_WEBAPP_MAX_AGE`  | `86400`                        | Срок жизни `auth_date` мини-приложения, сек (0 — не проверять)  |
+| Переменная                   | По умолчанию                             | Описание                                                               |
+|------------------------------|------------------------------------------|------------------------------------------------------------------------|
+| `MAX_API_TOKEN`              | —                                        | Токен бота (заголовок `Authorization`)                                 |
+| `MAX_BASE_URI`               | `https://platform-api2.max.ru`           | Базовый URI API (домен `platform-api2`)                                |
+| `MAX_WEBHOOK_ENABLED`        | `false`                                  | Регистрировать вебхук-роут                                             |
+| `MAX_WEBHOOK_SECRET`         | —                                        | Секрет вебхука (без него роут не включается)                           |
+| `MAX_WEBHOOK_QUEUE`          | `default`                                | Очередь для джобов обработки Update                                    |
+| `MAX_WEBHOOK_PATH`           | `/max/webhook`                           | Путь вебхук-роута                                                      |
+| `MAX_RETRY_*`                | 3 / 1 / 30 / 2 / false                   | Ретраи (попытки/базовая/макс. задержка/фактор/не-идемпотентные)        |
+| `MAX_RATE_LIMIT_*`           | 2.0 / 2.0                                | Token bucket: токенов в секунду / максимум                             |
+| `MAX_WEBAPP_MAX_AGE`         | `86400`                                  | Срок жизни `auth_date` мини-приложения, сек (0 — не проверять)         |
+| `MAX_WEBAPP_STRICT`          | `false`                                  | `max.webapp` возвращает 403 без валидного WebAppData                   |
+| `MAX_WEBAPP_SESSION_USER_ID` | `user_id`                                | Ключ сессии для user_id (middleware `max.webapp`)                      |
+| `MAX_WEBAPP_SESSION_CHAT_ID` | `chat_id`                                | Ключ сессии для chat_id (middleware `max.webapp`)                      |
+| `MAX_WEBAPP_CSP_ENABLED`     | `true`                                   | Добавлять `frame-ancestors` в CSP (middleware `max.csp`)               |
+| `MAX_WEBAPP_FRAME_ANCESTORS` | `https://max.ru,https://web.max.ru`      | Хосты, которым разрешено встраивать мини-приложение (через запятую)    |
+| `MAX_CHATS_ENABLED`          | `false`                                  | Включает реестр чатов `bot_chats` (слушатель `PersistBotChatListener`) |
+| `MAX_CHATS_MODEL`            | `GeekCo\LaravelMaxClient\Models\BotChat` | Модель реестра чатов (для переопределения)                             |
 
 > Токен и секрет никогда не должны попадать в код, логи или коммиты — только env.
 
@@ -114,6 +121,67 @@ class WebAppController
 Значение берётся из query-параметра `?WebAppData=...` (именно так MAX открывает мини-приложение). Свежесть `auth_date`
 проверяется по `MAX_WEBAPP_MAX_AGE` (по умолчанию 86400 сек; `0` — не проверять). Сырой `WebAppDataValidator` доступен
 из контейнера для случаев, когда данные получены не из `Request`.
+
+### Middleware `max.webapp` (сессия + strict)
+
+Готовый middleware верифицирует WebAppData и кладёт `user_id`/`chat_id` в сессию, при `MAX_WEBAPP_STRICT=true` отвечает
+`403` без валидных данных (иначе — пропускает в демо-режиме):
+
+```php
+// routes/web.php
+Route::get('/webapp', WebAppController::class)->middleware('max.webapp');
+```
+
+```php
+use GeekCo\LaravelMaxClient\WebApp\ResolveWebAppIdentity;
+
+class WebAppController
+{
+    public function __invoke(Request $request)
+    {
+        $identity = $request->attributes->get(ResolveWebAppIdentity::REQUEST_ATTRIBUTE); // WebAppIdentity|null
+        // $request->session()->get('user_id'), $request->session()->get('chat_id')
+    }
+}
+```
+
+Ключи сессии настраиваются (`MAX_WEBAPP_SESSION_USER_ID` / `MAX_WEBAPP_SESSION_CHAT_ID`). Верифицированная идентичность
+также доступна в атрибуте запроса `ResolveWebAppIdentity::REQUEST_ATTRIBUTE`.
+
+### Middleware `max.csp` (встраивание в MAX)
+
+Добавляет в `Content-Security-Policy` директиву `frame-ancestors 'self' <hosts>` (по умолчанию
+`https://max.ru https://web.max.ru`) — необходимо каждому мини-приложению, встраиваемому в MAX. Если CSP-заголовок уже
+задан приложением — директива дописывается:
+
+```php
+Route::get('/webapp', WebAppController::class)->middleware(['max.webapp', 'max.csp']);
+```
+
+Отключение — `MAX_WEBAPP_CSP_ENABLED=false`, хосты — `MAX_WEBAPP_FRAME_ANCESTORS=https://a.ru,https://b.ru`.
+
+## Реестр чатов (bot_chats)
+
+Реализация документированной практики MAX: `getChats` deprecated, `chat_id` хранить через подписку на
+`bot_added`/`bot_started`. Пакет даёт готовую модель, миграцию и слушателя, обновляющего реестр по апдейтам
+`bot_added`/`bot_started`/`bot_stopped`/`bot_removed`.
+
+1. Опубликуйте и выполните миграцию:
+
+   ```bash
+   php artisan vendor:publish --tag=laravel-max-client-migrations
+   php artisan migrate
+   ```
+
+2. Включите реестр:
+
+   ```dotenv
+   MAX_CHATS_ENABLED=true
+   ```
+
+Пакет регистрирует `PersistBotChatListener` на событие `MaxUpdateReceived` (таблица `bot_chats`, статусы
+`active`/`stopped`/`removed`). Модель можно переопределить через `MAX_CHATS_MODEL` (класс-наследник
+`GeekCo\LaravelMaxClient\Models\BotChat`).
 
 ## Подписки (webhook)
 

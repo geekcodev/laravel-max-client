@@ -125,10 +125,44 @@ return [
     | WebAppDataValidator). max_age — срок жизни auth_date в секундах
     | (replay-защита; 0 — не проверять свежесть).
     |
+    | strict — если true, middleware max.webapp возвращает 403 при открытии
+    | без валидного WebAppData. session — имена ключей сессии, в которые
+    | middleware кладёт user_id/chat_id.
+    |
     */
 
     'webapp' => [
         'max_age' => (int) env('MAX_WEBAPP_MAX_AGE', 86400),
+        'strict' => filter_var(env('MAX_WEBAPP_STRICT', false), FILTER_VALIDATE_BOOLEAN),
+        'session' => [
+            'user_id' => (string) env('MAX_WEBAPP_SESSION_USER_ID', 'user_id'),
+            'chat_id' => (string) env('MAX_WEBAPP_SESSION_CHAT_ID', 'chat_id'),
+        ],
+        'frame_ancestors' => [
+            'enabled' => filter_var(env('MAX_WEBAPP_CSP_ENABLED', true), FILTER_VALIDATE_BOOLEAN),
+            'hosts' => array_values(array_filter(array_map(
+                'trim',
+                explode(',', (string) env('MAX_WEBAPP_FRAME_ANCESTORS', 'https://max.ru,https://web.max.ru')),
+            ))),
+        ],
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Реестр чатов (bot_chats)
+    |--------------------------------------------------------------------------
+    |
+    | Готовая реализация документированной практики MAX: chat_id хранить через
+    | подписку на bot_added/bot_started (getChats deprecated). При enabled=true
+    | пакет регистрирует слушателя MaxUpdateReceived, который обновляет таблицу
+    | bot_chats. Миграция публикуется: php artisan vendor:publish
+    | --tag=laravel-max-client-migrations. model — класс модели (для переопределения).
+    |
+    */
+
+    'chats' => [
+        'enabled' => filter_var(env('MAX_CHATS_ENABLED', false), FILTER_VALIDATE_BOOLEAN),
+        'model' => (string) env('MAX_CHATS_MODEL', \GeekCo\LaravelMaxClient\Models\BotChat::class),
     ],
 
 ];

@@ -9,7 +9,10 @@ use GeekCo\LaravelMaxClient\Console\MaxListSubscriptionsCommand;
 use GeekCo\LaravelMaxClient\Console\MaxSubscribeCommand;
 use GeekCo\LaravelMaxClient\Console\MaxUnsubscribeCommand;
 use GeekCo\LaravelMaxClient\Http\HttpClientFactory;
+use GeekCo\LaravelMaxClient\Http\Middleware\SetMaxFrameAncestors;
+use GeekCo\LaravelMaxClient\Listeners\PersistBotChatListener;
 use GeekCo\LaravelMaxClient\Support\Config;
+use GeekCo\LaravelMaxClient\WebApp\ResolveWebAppIdentity;
 use GeekCo\LaravelMaxClient\WebApp\WebAppContext;
 use GeekCo\LaravelMaxClient\Webhook\HandleMaxUpdateJob;
 use GeekCo\LaravelMaxClient\Webhook\MaxUpdateReceived;
@@ -112,16 +115,31 @@ final class MaxServiceProvider extends ServiceProvider
             ]);
 
             $this->publishes([
-                __DIR__ . '/../config/laravel-max-client.php' => $this->app->configPath(self::CONFIG_KEY . '.php'),
-            ], self::CONFIG_KEY . '-config');
+                __DIR__.'/../config/laravel-max-client.php' => $this->app->configPath(self::CONFIG_KEY.'.php'),
+            ], self::CONFIG_KEY.'-config');
+
+            $this->publishes([
+                __DIR__.'/../database/migrations' => $this->app->databasePath('migrations'),
+            ], self::CONFIG_KEY.'-migrations');
         }
+
+        $router = $this->app->make(Router::class);
+        $router->aliasMiddleware('max.webapp', ResolveWebAppIdentity::class);
+        $router->aliasMiddleware('max.csp', SetMaxFrameAncestors::class);
 
         $config = $this->app->make(Config::class);
         if ($config->webhookEnabled() && $config->webhookSecret() !== null) {
-            $this->app->make(Router::class)
+            $router
                 ->post($config->webhookPath(), MaxWebhookController::class)
                 ->middleware([VerifyMaxWebhookSecret::class, ...$config->webhookMiddleware()])
                 ->name('max.webhook');
+        }
+
+        if ($config->chatsEnabled()) {
+            $this->app->make(Dispatcher::class)->listen(
+                MaxUpdateReceived::class,
+                PersistBotChatListener::class,
+            );
         }
     }
 }
