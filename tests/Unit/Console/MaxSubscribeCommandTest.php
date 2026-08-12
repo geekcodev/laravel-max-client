@@ -54,6 +54,30 @@ final class MaxSubscribeCommandTest extends TestCase
         $this->assertArrayNotHasKey('secret', $body);
     }
 
+    public function testRejectsNonStringUrl(): void
+    {
+        $mock = new MockHttpClient();
+        $this->app->instance(ClientInterface::class, $mock);
+
+        $this->artisan('max:subscribe', ['url' => ['one', 'two']])
+            ->expectsOutputToContain('URL должен быть строкой')
+            ->assertFailed();
+
+        $this->assertSame(0, $mock->callCount);
+    }
+
+    public function testRejectsMalformedUrl(): void
+    {
+        $mock = new MockHttpClient();
+        $this->app->instance(ClientInterface::class, $mock);
+
+        $this->artisan('max:subscribe', ['url' => 'not-a-url'])
+            ->expectsOutputToContain('HTTPS')
+            ->assertFailed();
+
+        $this->assertSame(0, $mock->callCount);
+    }
+
     public function testRejectsNonHttpsUrl(): void
     {
         $mock = new MockHttpClient();

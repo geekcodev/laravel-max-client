@@ -1,0 +1,9 @@
+.git
+.idea
+.env
+.env.*
+vendor
+build
+composer.lock
+.phpunit.cache
+.php-cs-fixer.cache

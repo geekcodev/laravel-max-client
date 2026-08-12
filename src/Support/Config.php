@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace GeekCo\LaravelMaxClient\Support;
 
+use GeekCo\LaravelMaxClient\Models\BotChat;
+
 final readonly class Config
 {
     private const KEY = 'laravel-max-client';
@@ -119,6 +121,53 @@ final readonly class Config
     public function webappMaxAge(): int
     {
         return $this->int('webapp.max_age', 86400);
+    }
+
+    public function webappStrict(): bool
+    {
+        return $this->bool('webapp.strict', false);
+    }
+
+    public function webappSessionUserIdKey(): string
+    {
+        return $this->string('webapp.session.user_id', 'user_id');
+    }
+
+    public function webappSessionChatIdKey(): string
+    {
+        return $this->string('webapp.session.chat_id', 'chat_id');
+    }
+
+    public function webappCspEnabled(): bool
+    {
+        return $this->bool('webapp.frame_ancestors.enabled', true);
+    }
+
+    /**
+     * @return list<string>
+     */
+    public function webappFrameAncestors(): array
+    {
+        return $this->listOfStrings('webapp.frame_ancestors.hosts', ['https://max.ru', 'https://web.max.ru']);
+    }
+
+    public function chatsEnabled(): bool
+    {
+        return $this->bool('chats.enabled', false);
+    }
+
+    /**
+     * @return class-string<BotChat>
+     */
+    public function chatsModel(): string
+    {
+        $model = $this->string('chats.model', BotChat::class);
+
+        if (!is_a($model, BotChat::class, true)) {
+            return BotChat::class;
+        }
+
+        return $model;
     }
 
     private function string(string $key, string $default): string

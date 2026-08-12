@@ -5,7 +5,9 @@ declare(strict_types=1);
 namespace GeekCo\LaravelMaxClient\Tests\Unit\Support;
 
 use GeekCo\LaravelMaxClient\MaxServiceProvider;
+use GeekCo\LaravelMaxClient\Models\BotChat;
 use GeekCo\LaravelMaxClient\Support\Config;
+use GeekCo\LaravelMaxClient\Tests\Support\CustomBotChat;
 use GeekCo\LaravelMaxClient\Tests\TestCase;
 
 final class ConfigTest extends TestCase
@@ -128,6 +130,25 @@ final class ConfigTest extends TestCase
 
         $this->assertSame(['throttle:60,1'], $config->webhookMiddleware());
         $this->assertSame([], $config->webhookAllowedHosts());
+    }
+
+    public function testChatsModelDefaultsToBotChat(): void
+    {
+        $this->assertSame(BotChat::class, $this->config()->chatsModel());
+    }
+
+    public function testChatsModelReturnsCustomSubclass(): void
+    {
+        $this->app['config']->set(MaxServiceProvider::CONFIG_KEY . '.chats.model', CustomBotChat::class);
+
+        $this->assertSame(CustomBotChat::class, $this->config()->chatsModel());
+    }
+
+    public function testChatsModelFallsBackWhenNotBotChatSubclass(): void
+    {
+        $this->app['config']->set(MaxServiceProvider::CONFIG_KEY . '.chats.model', \stdClass::class);
+
+        $this->assertSame(BotChat::class, $this->config()->chatsModel());
     }
 
     private function config(): Config

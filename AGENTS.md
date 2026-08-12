@@ -43,17 +43,23 @@
 
 ```
 config/laravel-max-client.php      publishable-конфиг (echo php artisan vendor:publish)
-examples/                          рабочие примеры (фасад, webhook-listener, PSR-18, webapp-mini-app, long-polling)
+database/migrations/               publishable-миграции (bot_chats; vendor:publish --tag=laravel-max-client-migrations)
+examples/                          рабочие примеры (фасад, webhook-listener, PSR-18, webapp, long-polling)
 src/
-  MaxServiceProvider.php           composition root: publish, bindings, регистрация роута/фасада
+  MaxServiceProvider.php           composition root: publish, bindings, регистрация роута/фасада/алиасов middleware
   Console/MaxListenCommand.php     artisan max:listen: Long Polling для локальной разработки (--once)
   Console/MaxSubscribeCommand.php  artisan max:subscribe: регистрация webhook-подписки (HTTPS + allowed_hosts)
   Console/MaxUnsubscribeCommand.php artisan max:unsubscribe: удаление webhook-подписки
   WebApp/WebAppContext.php         верификация WebAppData мини-приложения (resolve/verify из Request)
+  WebApp/ResolveWebAppIdentity.php middleware max.webapp: сессия user_id/chat_id + strict (403)
+  Enums/BotChatStatus.php          статусы реестра чатов (active/stopped/removed + label())
+  Models/BotChat.php               модель реестра чатов bot_chats (переопределяемая через chats.model)
+  Listeners/PersistBotChatListener.php upsert bot_chats по bot_added/bot_started/bot_stopped/bot_removed
+  Http/HttpClientFactory.php       SRP: сборка PSR-18/17 клиентов (Guzzle по умолчанию)
+  Http/Middleware/SetMaxFrameAncestors.php middleware max.csp: frame-ancestors для встраивания в MAX
   Facades/Max.php                  фасад поверх ApiClient (из контейнера)
   Contracts/MaxClient.php          интерфейс-фасад-прокси (необязательный, решает KISS при реализации)
   Support/Config.php               stateless readonly-доступ к config('max.*') (live-read из репозитория)
-  Http/HttpClientFactory.php       SRP: сборка PSR-18/17 клиентов (Guzzle по умолчанию)
   Webhook/
     MaxWebhookController.php       граница HTTP: verify → decode → dispatch (200 за <30с)
     VerifyMaxWebhookSecret.php     middleware: hash_equals по X-Max-Bot-Api-Secret
@@ -64,8 +70,10 @@ tests/                             PHPUnit + Orchestra Testbench
   Unit/                            конфиг, фабрики, middleware, контроллер, job, фасад
   Integration/SmokeTest.php        read-only смоук против реального API (группа integration)
 .github/workflows/ci.yml           quality (lint/phpstan/phpunit/coverage/audit) + integration
-Dockerfile                         PHP 8.4 + опциональный Xdebug (ARG INSTALL_XDEBUG=false)
+Dockerfile                         PHP 8.4 + опциональный Xdebug (ARG INSTALL_XDEBUG=false); COPY docker/config
 docker-compose.yml                 сервис app, user 1000:1000, volume ./ , .env пробрасывается
+.dockerignore                      секреты (.env) и тяжёлые каталоги (.git, vendor, build, кэши) вне build context
+docker/config/usr/local/etc/php/conf.d/40-custom.ini  PHP-конфиг dev-контейнера (memory_limit=1G)
 composer.json                      PSR-4 GeekCo\LaravelMaxClient\, PHP ^8.4
 phpunit.xml                        failOnRisky/failOnWarning; группа integration исключена по умолчанию
 phpstan.neon                       level max
@@ -138,6 +146,22 @@ scripts/check-coverage.php         порог покрытия строк (по 
     - `verify(Request): bool` — булева проверка без резолва identity. Роутинг в мини-приложении — приложение: пакет
       поставляет только сервис. Значение `auth_date` сверяется с
       `webapp.max_age` (env `MAX_WEBAPP_MAX_AGE`, default 86400; `0` — не проверять).
+- **`ResolveWebAppIdentity`** (алиас `max.webapp`): middleware верифицирует WebAppData через `WebAppContext`, кладёт
+  `user_id`/`chat_id` в сессию (ключи `webapp.session.*`, env `MAX_WEBAPP_SESSION_*`) и в атрибут запроса
+  `ResolveWebAppIdentity::REQUEST_ATTRIBUTE`; при `webapp.strict` (`MAX_WEBAPP_STRICT`) и отсутствии/невалидности
+  данных —
+  `403`. Регистрация алиаса — в `MaxServiceProvider::boot()`. Демо-режим — ответственность приложения (вьюха видит
+  `null`).
+- **`SetMaxFrameAncestors`** (алиас `max.csp`): middleware добавляет в `Content-Security-Policy` директиву
+  `frame-ancestors 'self' <hosts>` (хосты из `webapp.frame_ancestors.hosts`, env `MAX_WEBAPP_FRAME_ANCESTORS`, default
+  `max.ru`/`web.max.ru`); если CSP-заголовок уже задан — дописывает. Отключение — `webapp.frame_ancestors.enabled`
+  (`MAX_WEBAPP_CSP_ENABLED`).
+- **Реестр чатов** (`bot_chats`): реализация документированной практики MAX (getChats deprecated — chat_id хранить через
+  `bot_added`/`bot_started`). Publishable-миграция, модель `Models\BotChat` (переопределяемая `chats.model`,
+  `MAX_CHATS_MODEL`), enum `Enums\BotChatStatus`, слушатель `Listeners\PersistBotChatListener` (upsert по
+  `bot_added`/`bot_started`/`bot_stopped`/`bot_removed`, пропуск при `chat_id=null`). Включается `chats.enabled`
+  (`MAX_CHATS_ENABLED`); регистрация слушателя на `MaxUpdateReceived` — в `MaxServiceProvider::boot()`. Это
+  инфраструктура — бизнес-обработка остаётся в приложении.
 - **Подписки** (`MaxSubscribeCommand`, `MaxUnsubscribeCommand`): `php artisan max:subscribe <url>` /
   `max:unsubscribe <url>`. URL — только HTTPS; при заданном `config('laravel-max-client.webhook.allowed_hosts')` хост
   сверяется до создания подписки (A10). Подписка — на рекомендованный набор апдейтов (`UpdateType::*`), секрет из

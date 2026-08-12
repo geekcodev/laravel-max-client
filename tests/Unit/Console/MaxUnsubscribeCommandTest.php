@@ -31,6 +31,18 @@ final class MaxUnsubscribeCommandTest extends TestCase
         $this->assertStringContainsString('url=' . urlencode(self::URL), (string) $mock->lastRequest?->getUri());
     }
 
+    public function testRejectsNonStringUrl(): void
+    {
+        $mock = new MockHttpClient();
+        $this->app->instance(ClientInterface::class, $mock);
+
+        $this->artisan('max:unsubscribe', ['url' => ['one', 'two']])
+            ->expectsOutputToContain('URL должен быть строкой')
+            ->assertFailed();
+
+        $this->assertSame(0, $mock->callCount);
+    }
+
     public function testFailsOnApiError(): void
     {
         $mock = new MockHttpClient([new Response(400, [], '{}')]);
