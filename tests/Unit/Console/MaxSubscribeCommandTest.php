@@ -98,8 +98,7 @@ final class MaxSubscribeCommandTest extends TestCase
     private function mockSubscription(): MockHttpClient
     {
         $mock = new MockHttpClient([new Response(200, [], json_encode([
-            'url' => self::URL,
-            'update_types' => ['message_created'],
+            'success' => true,
         ], JSON_THROW_ON_ERROR))]);
         $this->app->instance(ClientInterface::class, $mock);
 

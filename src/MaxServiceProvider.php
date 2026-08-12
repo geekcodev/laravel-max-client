@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace GeekCo\LaravelMaxClient;
 
 use GeekCo\LaravelMaxClient\Console\MaxListenCommand;
+use GeekCo\LaravelMaxClient\Console\MaxListSubscriptionsCommand;
 use GeekCo\LaravelMaxClient\Console\MaxSubscribeCommand;
 use GeekCo\LaravelMaxClient\Console\MaxUnsubscribeCommand;
 use GeekCo\LaravelMaxClient\Http\HttpClientFactory;
@@ -105,6 +106,7 @@ final class MaxServiceProvider extends ServiceProvider
         if ($this->app->runningInConsole()) {
             $this->commands([
                 MaxListenCommand::class,
+                MaxListSubscriptionsCommand::class,
                 MaxSubscribeCommand::class,
                 MaxUnsubscribeCommand::class,
             ]);
