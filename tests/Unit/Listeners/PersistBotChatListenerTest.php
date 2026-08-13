@@ -83,6 +83,24 @@ final class PersistBotChatListenerTest extends TestCase
         $this->assertSame(0, BotChat::query()->count());
     }
 
+    public function testChatUpdateWithoutUserAndUserIdIsSkipped(): void
+    {
+        $this->dispatch(UpdateType::BotStarted, withUser: false);
+
+        $this->assertSame(0, BotChat::query()->count());
+    }
+
+    public function testChatUpdateWithTopLevelUserIdIsPersisted(): void
+    {
+        $this->dispatch(UpdateType::BotStarted, withUser: false, userId: 111);
+
+        $chat = BotChat::query()->sole();
+
+        $this->assertSame(111, $chat->user_id);
+        $this->assertSame(222, $chat->chat_id);
+        $this->assertSame(BotChatStatus::Active, $chat->status);
+    }
+
     public function testNonChatUpdateTypeIsIgnored(): void
     {
         $this->dispatch(UpdateType::MessageCreated);
@@ -90,20 +108,21 @@ final class PersistBotChatListenerTest extends TestCase
         $this->assertSame(0, BotChat::query()->count());
     }
 
-    private function dispatch(UpdateType $type, ?int $chatId = 222): void
+    private function dispatch(UpdateType $type, ?int $chatId = 222, bool $withUser = true, ?int $userId = null): void
     {
         $update = new Update(
             updateType: $type,
             timestamp: 1000,
-            user: new User(
+            user: $withUser ? new User(
                 userId: 111,
                 firstName: 'Иван',
                 lastName: null,
                 username: null,
                 isBot: false,
                 lastActivityTime: 1000,
-            ),
+            ) : null,
             chatId: $chatId,
+            userId: $userId,
         );
 
         $this->app->make(Dispatcher::class)->dispatch(new MaxUpdateReceived($update));

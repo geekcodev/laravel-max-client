@@ -109,7 +109,8 @@ scripts/check-coverage.php         порог покрытия строк (по 
       `http.options` (timeout, verify, connect_timeout);
     - PSR-17 фабрики — `GuzzleHttp\Psr7\HttpFactory`;
     - `RetryStrategy`, `RateLimiter` — из конфига (`retry.*`, `rate_limit.*`), при пустых значениях — дефолты ядра.
-- **Facade `Max`**: резолвит `ApiClient` из контейнера. Пример:
+- **Facade `Max`**: резолвит `ApiClient` из контейнера, PHPDoc `@method` покрывает всё API ядра
+  (синхронизировать с `ApiClient` при обновлении ядра). Пример:
   ```php
   use GeekCo\LaravelMaxClient\Facades\Max;
 
@@ -182,8 +183,9 @@ scripts/check-coverage.php         порог покрытия строк (по 
 - Тесты обязательны для нового кода: unit на компоненты пакета; HTTP-слой — через `tests/Support/MockHttpClient`
   (PSR-18) или подмену `ClientInterface` в контейнере Testbench. Интеграционные — read-only, группа `integration`, без
   токена `markTestSkipped` (не падать).
-- `composer.json` constraints на момент разработки: `php ^8.4`, `geekcodev/max-php-client ^1.0.1` (WebAppDataValidator
-  появился в v1.0.1 ядра — версия ниже не резолвит классы WebApp),
+- `composer.json` constraints на момент разработки: `php ^8.4`, `geekcodev/max-php-client ^1.0.3` (WebAppDataValidator
+  появился в v1.0.1 ядра; `Update::$user` nullable и фолбэки `user`/`chat_id` — с v1.0.3 — версия ниже не резолвит
+  актуальные сигнатуры),
   `laravel/framework ^12.0|^13.0`, `guzzlehttp/guzzle ^7.15` (обязателен как PSR-18 по умолчанию),
   `illuminate/support`/`illuminate/queue`/`illuminate/routing` — через `laravel/framework`; dev — Testbench под
   поддерживаемую версию Laravel, phpunit ^11.5, phpstan ^2.0, friendsofphp/php-cs-fixer ^3.0. Точные версии Testbench
@@ -201,7 +203,7 @@ scripts/check-coverage.php         порог покрытия строк (по 
 - **A05** — publishable-конфиг с безопасными дефолтами; `php artisan config:cache` безопасен для `env()`
   (использовать только на этапе конфига); секреты не попадают в `config:show` без необходимости (документировать
   маскирование при выводе).
-- **A06/A08** — актуальные зависимости: PHP ^8.4, ядро ^1.0.1, `composer audit` в Gate и CI; CI на push/PR.
+- **A06/A08** — актуальные зависимости: PHP ^8.4, ядро ^1.0.3, `composer audit` в Gate и CI; CI на push/PR.
 - **A07** — все сравнения секретов — только `hash_equals` (ядро + middleware вебхука).
 - **A09** — не логировать: access token, webhook secret, `vcf_info`, callback payload, тела запросов с токеном.
   Логировать статус/код/сообщение ошибки API (в коде ядра сообщения не содержат токенов).

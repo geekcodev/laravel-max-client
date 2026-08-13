@@ -37,10 +37,22 @@ final class PersistBotChatListener
             return;
         }
 
+        $user = $update->user;
+        $userId = $user !== null ? $user->userId : $update->userId;
+
+        if ($userId === null) {
+            Log::warning('MAX chat update without user skipped.', [
+                'update_type' => $update->updateType->value,
+                'chat_id' => $update->chatId,
+            ]);
+
+            return;
+        }
+
         if ($update->chatId === null) {
             Log::warning('MAX chat update without chat_id skipped.', [
                 'update_type' => $update->updateType->value,
-                'user_id' => $update->user->userId,
+                'user_id' => $userId,
             ]);
 
             return;
@@ -50,7 +62,7 @@ final class PersistBotChatListener
 
         $model::query()->updateOrCreate(
             [
-                'user_id' => $update->user->userId,
+                'user_id' => $userId,
                 'chat_id' => $update->chatId,
             ],
             ['status' => $status],

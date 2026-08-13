@@ -11,7 +11,7 @@
 
 - PHP ^8.4
 - Laravel ^12.0|^13.0
-- `geekcodev/max-php-client` ^1.0.1
+- `geekcodev/max-php-client` ^1.0.3
 
 ## Установка
 
@@ -72,9 +72,15 @@ Max::sendMessage(
     new Recipient(chatId: $chatId),
     new NewMessageBody(text: 'Привет!'),
 );
+
+// Фасад делегирует все методы ядра (см. PHPDoc @method): чаты, участники,
+// админы, закреп, команды, медиа, подписки.
+Max::sendBotAction($chatId, SenderAction::Typing);
+$admins = Max::getChatAdmins($chatId); // ChatAdminsResult::$members
 ```
 
-Список доступных методов — в ядре `GeekCo\MaxPhpClient\ApiClient`.
+Список доступных методов — в PHPDoc фасада `GeekCo\LaravelMaxClient\Facades\Max` и в ядре
+`GeekCo\MaxPhpClient\ApiClient` (актуальные сигнатуры — v1.0.3).
 
 Полные рабочие примеры — в каталоге [`examples/`](examples/):
 `basic-usage.php` (фасад), `webhook-listener.php` (обработка апдейтов),
