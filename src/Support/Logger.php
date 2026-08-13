@@ -24,12 +24,7 @@ final readonly class Logger
      */
     public function log(string $level, string $message, array $context = []): void
     {
-        $logger = $this->logger();
-        if ($logger === null) {
-            return;
-        }
-
-        $logger->log($level, $message, $context);
+        $this->logger()?->log($level, $message, $context);
     }
 
     public function logger(): ?LoggerInterface
@@ -38,16 +33,24 @@ final readonly class Logger
             return null;
         }
 
-        try {
-            return Log::channel($this->config->loggingChannel());
-        } catch (\InvalidArgumentException) {
+        return Log::channel($this->resolveChannel());
+    }
+
+    private function resolveChannel(): string
+    {
+        if ($this->hasChannel($this->config->loggingChannel())) {
+            return $this->config->loggingChannel();
         }
 
-        try {
-            return Log::channel($this->config->loggingFallbackChannel());
-        } catch (\InvalidArgumentException) {
+        if ($this->hasChannel($this->config->loggingFallbackChannel())) {
+            return $this->config->loggingFallbackChannel();
         }
 
-        return Log::channel('stack');
+        return 'stack';
+    }
+
+    private function hasChannel(string $name): bool
+    {
+        return is_array(config('logging.channels.' . $name));
     }
 }

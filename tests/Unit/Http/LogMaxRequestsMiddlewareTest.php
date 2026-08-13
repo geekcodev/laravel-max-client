@@ -133,6 +133,62 @@ final class LogMaxRequestsMiddlewareTest extends TestCase
         $this->assertSame([], $this->logged);
     }
 
+    public function testLogsWhenPathIsNotExcluded(): void
+    {
+        $this->enableLogging(['exclude_paths' => ['other/path']]);
+
+        $this->handle(static fn (): Response => new Response('ok'));
+
+        $this->assertCount(2, $this->logged);
+    }
+
+    public function testLogsNonJsonRequestBodyAsRawString(): void
+    {
+        $this->enableLogging(['log_request_body' => true]);
+
+        $request = Request::create('/max/webhook', 'POST', [], [], [], [], 'plain text body');
+
+        $this->handle(static fn (): Response => new Response('ok'), $request);
+
+        $this->assertSame('plain text body', $this->logged[0][2]['body']);
+    }
+
+    public function testTruncatesNonJsonResponseBody(): void
+    {
+        $this->enableLogging([
+            'log_response_body' => true,
+            'log_response_body_max_length' => 10,
+        ]);
+
+        $response = $this->handle(static fn (): Response => new Response(str_repeat('a', 100)));
+
+        $this->assertSame(200, $response->getStatusCode());
+        $this->assertSame('aaaaaaaaaa', $this->logged[1][2]['body']);
+    }
+
+    public function testExcludedRequestBodyPathSkipsBodyOnly(): void
+    {
+        $this->enableLogging([
+            'log_request_body' => true,
+            'exclude_request_body_paths' => ['max/webhook'],
+        ]);
+
+        $request = Request::create(
+            '/max/webhook',
+            'POST',
+            [],
+            [],
+            [],
+            [],
+            json_encode(['update_type' => 'message_created'], JSON_THROW_ON_ERROR),
+        );
+
+        $this->handle(static fn (): Response => new Response('ok'), $request);
+
+        $this->assertCount(2, $this->logged);
+        $this->assertArrayNotHasKey('body', $this->logged[0][2]);
+    }
+
     public function testResponseLevelReflectsStatus(): void
     {
         $this->enableLogging();
