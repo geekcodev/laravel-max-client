@@ -10,6 +10,7 @@ declare(strict_types=1);
 use GeekCo\LaravelMaxClient\Facades\Max;
 use GeekCo\MaxPhpClient\Dto\NewMessageBody;
 use GeekCo\MaxPhpClient\Dto\Recipient;
+use GeekCo\MaxPhpClient\Enum\SenderAction;
 use GeekCo\MaxPhpClient\Enum\TextFormat;
 
 // Информация о боте (GET /self).
@@ -41,3 +42,11 @@ Max::sendMessage(
         format: TextFormat::Markdown,
     ),
 );
+
+// Фасад делегирует все методы ядра (PHPDoc @method в Facades\Max) —
+// примеры API v1.0.3: typing-статус и список админов чата.
+Max::sendBotAction($chatId, SenderAction::TypingOn);
+$admins = Max::getChatAdmins($chatId); // ChatAdminsResult::$members
+foreach ($admins->members as $admin) {
+    echo 'Админ: @' . ($admin->username ?? (string) $admin->userId) . PHP_EOL;
+}
