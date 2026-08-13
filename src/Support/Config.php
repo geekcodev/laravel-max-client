@@ -156,6 +156,60 @@ final readonly class Config
         return $this->bool('chats.enabled', false);
     }
 
+    public function loggingEnabled(): bool
+    {
+        return $this->bool('logging.enabled', false);
+    }
+
+    public function loggingChannel(): string
+    {
+        return $this->string('logging.channel', 'stack');
+    }
+
+    public function loggingFallbackChannel(): string
+    {
+        return $this->string('logging.fallback_channel', 'laravel-max-client');
+    }
+
+    public function loggingLogRequestBody(): bool
+    {
+        return $this->bool('logging.log_request_body', false);
+    }
+
+    public function loggingLogResponseBody(): bool
+    {
+        return $this->bool('logging.log_response_body', false);
+    }
+
+    public function loggingLogResponseBodyMaxLength(): int
+    {
+        return $this->int('logging.log_response_body_max_length', 1000);
+    }
+
+    /**
+     * @return list<string>
+     */
+    public function loggingExcludePaths(): array
+    {
+        return $this->listOfStrings('logging.exclude_paths', []);
+    }
+
+    /**
+     * @return list<string>
+     */
+    public function loggingExcludeRequestBodyPaths(): array
+    {
+        return $this->listOfStrings('logging.exclude_request_body_paths', []);
+    }
+
+    /**
+     * @return list<string>
+     */
+    public function loggingExcludeResponseBodyPaths(): array
+    {
+        return $this->listOfStrings('logging.exclude_response_body_paths', []);
+    }
+
     /**
      * @return class-string<BotChat>
      */

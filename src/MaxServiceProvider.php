@@ -9,9 +9,11 @@ use GeekCo\LaravelMaxClient\Console\MaxListSubscriptionsCommand;
 use GeekCo\LaravelMaxClient\Console\MaxSubscribeCommand;
 use GeekCo\LaravelMaxClient\Console\MaxUnsubscribeCommand;
 use GeekCo\LaravelMaxClient\Http\HttpClientFactory;
+use GeekCo\LaravelMaxClient\Http\Middleware\LogMaxRequestsMiddleware;
 use GeekCo\LaravelMaxClient\Http\Middleware\SetMaxFrameAncestors;
 use GeekCo\LaravelMaxClient\Listeners\PersistBotChatListener;
 use GeekCo\LaravelMaxClient\Support\Config;
+use GeekCo\LaravelMaxClient\Support\Logger;
 use GeekCo\LaravelMaxClient\WebApp\ResolveWebAppIdentity;
 use GeekCo\LaravelMaxClient\WebApp\WebAppContext;
 use GeekCo\LaravelMaxClient\Webhook\HandleMaxUpdateJob;
@@ -40,6 +42,11 @@ final class MaxServiceProvider extends ServiceProvider
         $this->app->singleton(
             Config::class,
             static fn (): Config => new Config(),
+        );
+
+        $this->app->singleton(
+            Logger::class,
+            static fn (Container $app): Logger => new Logger($app->make(Config::class)),
         );
 
         $this->app->singleton(
@@ -126,12 +133,19 @@ final class MaxServiceProvider extends ServiceProvider
         $router = $this->app->make(Router::class);
         $router->aliasMiddleware('max.webapp', ResolveWebAppIdentity::class);
         $router->aliasMiddleware('max.csp', SetMaxFrameAncestors::class);
+        $router->aliasMiddleware('max_bot.log', LogMaxRequestsMiddleware::class);
 
         $config = $this->app->make(Config::class);
         if ($config->webhookEnabled() && $config->webhookSecret() !== null) {
+            $middleware = [VerifyMaxWebhookSecret::class, ...$config->webhookMiddleware()];
+
+            if ($config->loggingEnabled()) {
+                array_unshift($middleware, LogMaxRequestsMiddleware::class);
+            }
+
             $router
                 ->post($config->webhookPath(), MaxWebhookController::class)
-                ->middleware([VerifyMaxWebhookSecret::class, ...$config->webhookMiddleware()])
+                ->middleware($middleware)
                 ->name('max.webhook');
         }
 
