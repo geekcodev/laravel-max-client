@@ -165,4 +165,37 @@ return [
         'model' => (string) env('MAX_CHATS_MODEL', \GeekCo\LaravelMaxClient\Models\BotChat::class),
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Logging
+    |--------------------------------------------------------------------------
+    |
+    | Логирование HTTP-запросов/ответов (middleware max_bot.log) и обработки
+    | апдейтов. По умолчанию выключено (fail-safe, без накладных расходов).
+    |
+    | При enabled=true пакет автоматически подключает middleware к роуту вебхука;
+    | для остальных роутов (например, /webapp) подключай alias 'max_bot.log'
+    | вручную в списке middleware роута.
+    |
+    | channel — канал Laravel; если не определён — fallback_channel, затем stack.
+    | log_request_body / log_response_body — включать тело (OWASP A09: тело и
+    | возможные секреты логируются только при явном включении). Секретные ключи
+    | в теле (token, secret, password и т.п.) всегда маскируются.
+    | exclude_*_paths — пути, для которых тело/логирование пропускается
+    | (LIKE-сравнение по подстроке, как в Laravel request path()).
+    |
+    */
+
+    'logging' => [
+        'enabled' => filter_var(env('MAX_LOGGING_ENABLED', false), FILTER_VALIDATE_BOOLEAN),
+        'channel' => (string) env('MAX_LOGGING_CHANNEL', 'stack'),
+        'fallback_channel' => (string) env('MAX_LOGGING_FALLBACK_CHANNEL', 'laravel-max-client'),
+        'log_request_body' => filter_var(env('MAX_LOGGING_LOG_REQUEST_BODY', false), FILTER_VALIDATE_BOOLEAN),
+        'log_response_body' => filter_var(env('MAX_LOGGING_LOG_RESPONSE_BODY', false), FILTER_VALIDATE_BOOLEAN),
+        'log_response_body_max_length' => (int) env('MAX_LOGGING_LOG_RESPONSE_BODY_MAX_LENGTH', 1000),
+        'exclude_paths' => [],
+        'exclude_request_body_paths' => [],
+        'exclude_response_body_paths' => [],
+    ],
+
 ];

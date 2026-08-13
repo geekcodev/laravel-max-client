@@ -5,8 +5,10 @@ declare(strict_types=1);
 namespace GeekCo\LaravelMaxClient\Tests\Unit;
 
 use GeekCo\LaravelMaxClient\Http\HttpClientFactory;
+use GeekCo\LaravelMaxClient\Http\Middleware\LogMaxRequestsMiddleware;
 use GeekCo\LaravelMaxClient\MaxServiceProvider;
 use GeekCo\LaravelMaxClient\Support\Config;
+use GeekCo\LaravelMaxClient\Support\Logger;
 use GeekCo\LaravelMaxClient\Tests\Support\MockHttpClient;
 use GeekCo\LaravelMaxClient\Tests\TestCase;
 use GeekCo\LaravelMaxClient\WebApp\WebAppContext;
@@ -118,6 +120,24 @@ final class MaxServiceProviderTest extends TestCase
     {
         $this->assertInstanceOf(Config::class, $this->app->make(Config::class));
         $this->assertSame('test-token', $this->app->make(Config::class)->apiToken());
+    }
+
+    public function testLoggerIsBoundAsSingleton(): void
+    {
+        $logger = $this->app->make(Logger::class);
+
+        $this->assertInstanceOf(Logger::class, $logger);
+        $this->assertSame($logger, $this->app->make(Logger::class));
+    }
+
+    public function testLogMaxRequestsMiddlewareAliasIsRegistered(): void
+    {
+        $this->app->boot();
+
+        $this->assertSame(
+            LogMaxRequestsMiddleware::class,
+            $this->app->router->getMiddleware()['max_bot.log'],
+        );
     }
 
     public function testHttpClientFactoryIsBound(): void

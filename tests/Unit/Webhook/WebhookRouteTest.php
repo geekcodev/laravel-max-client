@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace GeekCo\LaravelMaxClient\Tests\Unit\Webhook;
 
+use GeekCo\LaravelMaxClient\Http\Middleware\LogMaxRequestsMiddleware;
 use GeekCo\LaravelMaxClient\MaxServiceProvider;
 use GeekCo\LaravelMaxClient\Tests\TestCase;
 use GeekCo\LaravelMaxClient\Webhook\MaxWebhookController;
@@ -29,6 +30,21 @@ final class WebhookRouteTest extends TestCase
         $this->assertSame('max/webhook', $route->uri());
         $this->assertSame(MaxWebhookController::class, $route->getActionName());
         $this->assertContains(VerifyMaxWebhookSecret::class, $route->middleware());
+        $this->assertNotContains(LogMaxRequestsMiddleware::class, $route->middleware());
+    }
+
+    #[DefineEnvironment('enableWebhookWithLogging')]
+    public function testLoggingMiddlewareIsPrependedWhenLoggingEnabled(): void
+    {
+        $route = $this->app->router->getRoutes()->getByName('max.webhook');
+        $this->assertInstanceOf(Route::class, $route);
+
+        $middleware = $route->middleware();
+        $this->assertContains(LogMaxRequestsMiddleware::class, $middleware);
+
+        $logPosition = array_search(LogMaxRequestsMiddleware::class, $middleware, true);
+        $secretPosition = array_search(VerifyMaxWebhookSecret::class, $middleware, true);
+        $this->assertLessThan($secretPosition, $logPosition);
     }
 
     #[DefineEnvironment('enableWebhookWithoutSecret')]
@@ -56,6 +72,12 @@ final class WebhookRouteTest extends TestCase
     {
         $app['config']->set(MaxServiceProvider::CONFIG_KEY . '.webhook.enabled', true);
         $app['config']->set(MaxServiceProvider::CONFIG_KEY . '.webhook.secret', 'test-secret');
+    }
+
+    protected function enableWebhookWithLogging($app): void
+    {
+        $this->enableWebhook($app);
+        $app['config']->set(MaxServiceProvider::CONFIG_KEY . '.logging.enabled', true);
     }
 
     protected function enableWebhookWithoutSecret($app): void

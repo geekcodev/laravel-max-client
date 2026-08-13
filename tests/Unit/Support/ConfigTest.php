@@ -62,6 +62,21 @@ final class ConfigTest extends TestCase
         $this->assertTrue($config->pollingBreakOnFailure());
     }
 
+    public function testLoggingDefaults(): void
+    {
+        $config = $this->config();
+
+        $this->assertFalse($config->loggingEnabled());
+        $this->assertSame('stack', $config->loggingChannel());
+        $this->assertSame('laravel-max-client', $config->loggingFallbackChannel());
+        $this->assertFalse($config->loggingLogRequestBody());
+        $this->assertFalse($config->loggingLogResponseBody());
+        $this->assertSame(1000, $config->loggingLogResponseBodyMaxLength());
+        $this->assertSame([], $config->loggingExcludePaths());
+        $this->assertSame([], $config->loggingExcludeRequestBodyPaths());
+        $this->assertSame([], $config->loggingExcludeResponseBodyPaths());
+    }
+
     public function testCustomValuesAreReturned(): void
     {
         $this->app['config']->set(MaxServiceProvider::CONFIG_KEY . '.base_uri', 'https://custom.max.test');
@@ -78,6 +93,15 @@ final class ConfigTest extends TestCase
         $this->app['config']->set(MaxServiceProvider::CONFIG_KEY . '.long_polling.limit', 50);
         $this->app['config']->set(MaxServiceProvider::CONFIG_KEY . '.long_polling.timeout', 10);
         $this->app['config']->set(MaxServiceProvider::CONFIG_KEY . '.long_polling.break_on_failure', false);
+        $this->app['config']->set(MaxServiceProvider::CONFIG_KEY . '.logging.enabled', true);
+        $this->app['config']->set(MaxServiceProvider::CONFIG_KEY . '.logging.channel', 'max');
+        $this->app['config']->set(MaxServiceProvider::CONFIG_KEY . '.logging.fallback_channel', 'fallback');
+        $this->app['config']->set(MaxServiceProvider::CONFIG_KEY . '.logging.log_request_body', true);
+        $this->app['config']->set(MaxServiceProvider::CONFIG_KEY . '.logging.log_response_body', true);
+        $this->app['config']->set(MaxServiceProvider::CONFIG_KEY . '.logging.log_response_body_max_length', 500);
+        $this->app['config']->set(MaxServiceProvider::CONFIG_KEY . '.logging.exclude_paths', ['max/webhook']);
+        $this->app['config']->set(MaxServiceProvider::CONFIG_KEY . '.logging.exclude_request_body_paths', ['auth']);
+        $this->app['config']->set(MaxServiceProvider::CONFIG_KEY . '.logging.exclude_response_body_paths', ['admin']);
 
         $config = $this->config();
 
@@ -95,6 +119,15 @@ final class ConfigTest extends TestCase
         $this->assertSame(50, $config->pollingLimit());
         $this->assertSame(10, $config->pollingTimeout());
         $this->assertFalse($config->pollingBreakOnFailure());
+        $this->assertTrue($config->loggingEnabled());
+        $this->assertSame('max', $config->loggingChannel());
+        $this->assertSame('fallback', $config->loggingFallbackChannel());
+        $this->assertTrue($config->loggingLogRequestBody());
+        $this->assertTrue($config->loggingLogResponseBody());
+        $this->assertSame(500, $config->loggingLogResponseBodyMaxLength());
+        $this->assertSame(['max/webhook'], $config->loggingExcludePaths());
+        $this->assertSame(['auth'], $config->loggingExcludeRequestBodyPaths());
+        $this->assertSame(['admin'], $config->loggingExcludeResponseBodyPaths());
     }
 
     public function testWebhookSecretIsNullWhenEmpty(): void
