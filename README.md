@@ -36,24 +36,30 @@ MAX_API_TOKEN=your-bot-access-token
 
 Все доступные переменные (имена см. в `.env.example`):
 
-| Переменная                   | По умолчанию                             | Описание                                                               |
-|------------------------------|------------------------------------------|------------------------------------------------------------------------|
-| `MAX_API_TOKEN`              | —                                        | Токен бота (заголовок `Authorization`)                                 |
-| `MAX_BASE_URI`               | `https://platform-api2.max.ru`           | Базовый URI API (домен `platform-api2`)                                |
-| `MAX_WEBHOOK_ENABLED`        | `false`                                  | Регистрировать вебхук-роут                                             |
-| `MAX_WEBHOOK_SECRET`         | —                                        | Секрет вебхука (без него роут не включается)                           |
-| `MAX_WEBHOOK_QUEUE`          | `default`                                | Очередь для джобов обработки Update                                    |
-| `MAX_WEBHOOK_PATH`           | `/max/webhook`                           | Путь вебхук-роута                                                      |
-| `MAX_RETRY_*`                | 3 / 1 / 30 / 2 / false                   | Ретраи (попытки/базовая/макс. задержка/фактор/не-идемпотентные)        |
-| `MAX_RATE_LIMIT_*`           | 2.0 / 2.0                                | Token bucket: токенов в секунду / максимум                             |
-| `MAX_WEBAPP_MAX_AGE`         | `86400`                                  | Срок жизни `auth_date` мини-приложения, сек (0 — не проверять)         |
-| `MAX_WEBAPP_STRICT`          | `false`                                  | `max.webapp` возвращает 403 без валидного WebAppData                   |
-| `MAX_WEBAPP_SESSION_USER_ID` | `user_id`                                | Ключ сессии для user_id (middleware `max.webapp`)                      |
-| `MAX_WEBAPP_SESSION_CHAT_ID` | `chat_id`                                | Ключ сессии для chat_id (middleware `max.webapp`)                      |
-| `MAX_WEBAPP_CSP_ENABLED`     | `true`                                   | Добавлять `frame-ancestors` в CSP (middleware `max.csp`)               |
-| `MAX_WEBAPP_FRAME_ANCESTORS` | `https://max.ru,https://web.max.ru`      | Хосты, которым разрешено встраивать мини-приложение (через запятую)    |
-| `MAX_CHATS_ENABLED`          | `false`                                  | Включает реестр чатов `bot_chats` (слушатель `PersistBotChatListener`) |
-| `MAX_CHATS_MODEL`            | `GeekCo\LaravelMaxClient\Models\BotChat` | Модель реестра чатов (для переопределения)                             |
+| Переменная                                 | По умолчанию                             | Описание                                                               |
+|--------------------------------------------|------------------------------------------|------------------------------------------------------------------------|
+| `MAX_API_TOKEN`                            | —                                        | Токен бота (заголовок `Authorization`)                                 |
+| `MAX_BASE_URI`                             | `https://platform-api2.max.ru`           | Базовый URI API (домен `platform-api2`)                                |
+| `MAX_WEBHOOK_ENABLED`                      | `false`                                  | Регистрировать вебхук-роут                                             |
+| `MAX_WEBHOOK_SECRET`                       | —                                        | Секрет вебхука (без него роут не включается)                           |
+| `MAX_WEBHOOK_QUEUE`                        | `default`                                | Очередь для джобов обработки Update                                    |
+| `MAX_WEBHOOK_PATH`                         | `/max/webhook`                           | Путь вебхук-роута                                                      |
+| `MAX_RETRY_*`                              | 3 / 1 / 30 / 2 / false                   | Ретраи (попытки/базовая/макс. задержка/фактор/не-идемпотентные)        |
+| `MAX_RATE_LIMIT_*`                         | 2.0 / 2.0                                | Token bucket: токенов в секунду / максимум                             |
+| `MAX_WEBAPP_MAX_AGE`                       | `86400`                                  | Срок жизни `auth_date` мини-приложения, сек (0 — не проверять)         |
+| `MAX_WEBAPP_STRICT`                        | `false`                                  | `max.webapp` возвращает 403 без валидного WebAppData                   |
+| `MAX_WEBAPP_SESSION_USER_ID`               | `user_id`                                | Ключ сессии для user_id (middleware `max.webapp`)                      |
+| `MAX_WEBAPP_SESSION_CHAT_ID`               | `chat_id`                                | Ключ сессии для chat_id (middleware `max.webapp`)                      |
+| `MAX_WEBAPP_CSP_ENABLED`                   | `true`                                   | Добавлять `frame-ancestors` в CSP (middleware `max.csp`)               |
+| `MAX_WEBAPP_FRAME_ANCESTORS`               | `https://max.ru,https://web.max.ru`      | Хосты, которым разрешено встраивать мини-приложение (через запятую)    |
+| `MAX_CHATS_ENABLED`                        | `false`                                  | Включает реестр чатов `bot_chats` (слушатель `PersistBotChatListener`) |
+| `MAX_CHATS_MODEL`                          | `GeekCo\LaravelMaxClient\Models\BotChat` | Модель реестра чатов (для переопределения)                             |
+| `MAX_LOGGING_ENABLED`                      | `false`                                  | Включает логирование (middleware `max_bot.log`)                        |
+| `MAX_LOGGING_CHANNEL`                      | `stack`                                  | Канал Laravel для логов                                                |
+| `MAX_LOGGING_FALLBACK_CHANNEL`             | `laravel-max-client`                     | Запасной канал, если основной не определён                             |
+| `MAX_LOGGING_LOG_REQUEST_BODY`             | `false`                                  | Логировать тело запроса (секреты маскируются)                          |
+| `MAX_LOGGING_LOG_RESPONSE_BODY`            | `false`                                  | Логировать тело ответа                                                 |
+| `MAX_LOGGING_LOG_RESPONSE_BODY_MAX_LENGTH` | `1000`                                   | Макс. длина не-JSON тела ответа в логе                                 |
 
 > Токен и секрет никогда не должны попадать в код, логи или коммиты — только env.
 
@@ -269,6 +275,38 @@ php artisan max:listen
 задайте `MAX_POLLING_BREAK_ON_FAILURE=false`).
 
 > Активная webhook-подписка отключает Long Polling — не используйте оба механизма одновременно.
+
+## Логирование (middleware `max_bot.log`)
+
+Опциональное логирование входящих запросов/ответов и обработки апдейтов. По умолчанию выключено (fail-safe). При
+`MAX_LOGGING_ENABLED=true` middleware автоматически подключается к роуту вебхука **перед** `VerifyMaxWebhookSecret` — в
+лог попадают и ответы 401/400.
+
+```dotenv
+MAX_LOGGING_ENABLED=true
+MAX_LOGGING_CHANNEL=max   # канал нужно определить в config/logging.php приложения
+```
+
+Что пишется:
+
+- `Incoming MAX request` / `MAX response` (метод, url, ip, user_agent, статус, `duration_ms`); уровни: 2xx→info,
+  4xx→warning, 5xx→error.
+- `HandleMaxUpdateJob`: start/finish/failed с контекстом `update_type`, `user_id`, `chat_id` — видна обработка в
+  очереди.
+- Тело запроса/ответа — только при `MAX_LOGGING_LOG_REQUEST_BODY` / `MAX_LOGGING_LOG_RESPONSE_BODY`
+  (OWASP A09). Секретные ключи (`token`, `secret`, `password`, `api_key`, `authorization` и т.п.)
+  всегда маскируются как `***` (рекурсивно).
+
+Для остальных роутов (например мини-приложения) подключайте alias вручную:
+
+```php
+Route::get('/webapp', WebAppController::class)->middleware(['max.webapp', 'max_bot.log']);
+```
+
+Пути из `logging.exclude_paths` полностью пропускаются, из `exclude_request_body_paths` /
+`exclude_response_body_paths` — логируются без тела. Заголовок `X-Request-ID` из запроса проксируется в ответ. Если
+канал из `MAX_LOGGING_CHANNEL` не определён — используется
+`MAX_LOGGING_FALLBACK_CHANNEL`, затем `stack`.
 
 ## Тестирование
 

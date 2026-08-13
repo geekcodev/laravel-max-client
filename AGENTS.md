@@ -57,9 +57,11 @@ src/
   Listeners/PersistBotChatListener.php upsert bot_chats по bot_added/bot_started/bot_stopped/bot_removed
   Http/HttpClientFactory.php       SRP: сборка PSR-18/17 клиентов (Guzzle по умолчанию)
   Http/Middleware/SetMaxFrameAncestors.php middleware max.csp: frame-ancestors для встраивания в MAX
+  Http/Middleware/LogMaxRequestsMiddleware.php middleware max_bot.log: лог request/response
   Facades/Max.php                  фасад поверх ApiClient (из контейнера)
   Contracts/MaxClient.php          интерфейс-фасад-прокси (необязательный, решает KISS при реализации)
   Support/Config.php               stateless readonly-доступ к config('max.*') (live-read из репозитория)
+  Support/Logger.php               резолвер канала логирования (channel→fallback→stack, no-op при выключенном)
   Webhook/
     MaxWebhookController.php       граница HTTP: verify → decode → dispatch (200 за <30с)
     VerifyMaxWebhookSecret.php     middleware: hash_equals по X-Max-Bot-Api-Secret
@@ -91,6 +93,7 @@ scripts/check-coverage.php         порог покрытия строк (по 
 | Слой          | Классы                                                                 | Назначение                                                          |
 |---------------|------------------------------------------------------------------------|---------------------------------------------------------------------|
 | Composition   | `MaxServiceProvider`, `HttpClientFactory`, `Support\Config`            | Сборка зависимостей из контейнера Laravel, конфиг                   |
+| Logging       | `Http\Middleware\LogMaxRequestsMiddleware`, `Support\Logger`           | Лог запросов/ответов и апдейтов (config-gated, канал с fallback)    |
 | Facade        | `Facades\Max`                                                          | Статический доступ к `ApiClient` из кода приложения                 |
 | WebApp        | `WebApp\WebAppContext`                                                 | Верификация WebAppData мини-приложения (ядра `WebAppDataValidator`) |
 | Webhook       | `MaxWebhookController`, `VerifyMaxWebhookSecret`, `HandleMaxUpdateJob` | Приём/верификация апдейтов, постановка в очередь                    |
@@ -109,8 +112,8 @@ scripts/check-coverage.php         порог покрытия строк (по 
       `http.options` (timeout, verify, connect_timeout);
     - PSR-17 фабрики — `GuzzleHttp\Psr7\HttpFactory`;
     - `RetryStrategy`, `RateLimiter` — из конфига (`retry.*`, `rate_limit.*`), при пустых значениях — дефолты ядра.
-- **Facade `Max`**: резолвит `ApiClient` из контейнера, PHPDoc `@method` покрывает всё API ядра
-  (синхронизировать с `ApiClient` при обновлении ядра). Пример:
+- **Facade `Max`**: резолвит `ApiClient` из контейнера, PHPDoc `@method` покрывает всё API ядра (синхронизировать с
+  `ApiClient` при обновлении ядра). Пример:
   ```php
   use GeekCo\LaravelMaxClient\Facades\Max;
 
@@ -157,6 +160,15 @@ scripts/check-coverage.php         порог покрытия строк (по 
   `frame-ancestors 'self' <hosts>` (хосты из `webapp.frame_ancestors.hosts`, env `MAX_WEBAPP_FRAME_ANCESTORS`, default
   `max.ru`/`web.max.ru`); если CSP-заголовок уже задан — дописывает. Отключение — `webapp.frame_ancestors.enabled`
   (`MAX_WEBAPP_CSP_ENABLED`).
+- **`LogMaxRequestsMiddleware`** (алиас `max_bot.log`): лог request (`Incoming MAX request`) и response (`MAX response`,
+  `duration_ms`), уровни 2xx→info / 4xx→warning / 5xx→error. Включение — `logging.enabled`
+  (`MAX_LOGGING_ENABLED`, default `false`). При включении провайдер автоматически подключает middleware к роуту вебхука
+  **перед** `VerifyMaxWebhookSecret`; для остальных роутов — алиас в middleware роута. Тело — только при
+  `logging.log_request_body`/`logging.log_response_body` (`MAX_LOGGING_LOG_*_BODY`, default `false`, A09), секретные
+  ключи маскируются рекурсивно (`***`). Канал — `logging.channel` → `logging.fallback_channel` → `stack` (резолвер
+  `Support\Logger`, no-op при выключенном). `exclude_paths` (полный пропуск), `exclude_request_body_paths` /
+  `exclude_response_body_paths` (без тела); `X-Request-ID` проксируется в ответ. `HandleMaxUpdateJob` логирует
+  start/finish/failed (context: `update_type`, `user_id`, `chat_id`).
 - **Реестр чатов** (`bot_chats`): реализация документированной практики MAX (getChats deprecated — chat_id хранить через
   `bot_added`/`bot_started`). Publishable-миграция, модель `Models\BotChat` (переопределяемая `chats.model`,
   `MAX_CHATS_MODEL`), enum `Enums\BotChatStatus`, слушатель `Listeners\PersistBotChatListener` (upsert по
@@ -206,7 +218,8 @@ scripts/check-coverage.php         порог покрытия строк (по 
 - **A06/A08** — актуальные зависимости: PHP ^8.4, ядро ^1.0.3, `composer audit` в Gate и CI; CI на push/PR.
 - **A07** — все сравнения секретов — только `hash_equals` (ядро + middleware вебхука).
 - **A09** — не логировать: access token, webhook secret, `vcf_info`, callback payload, тела запросов с токеном.
-  Логировать статус/код/сообщение ошибки API (в коде ядра сообщения не содержат токенов).
+  Логировать статус/код/сообщение ошибки API (в коде ядра сообщения не содержат токенов). Тела логируются только при
+  явном включении (`logging.log_request_body`/`logging.log_response_body`), секретные ключи маскируются (`***`).
 - **A10** — URL подписок/загрузки только `https://` (ядро); при необходимости — allow-list хостов в конфиге
   (`webhook.allowed_hosts`), валидация домена до создания подписки.
 
