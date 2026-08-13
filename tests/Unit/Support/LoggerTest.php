@@ -9,7 +9,6 @@ use GeekCo\LaravelMaxClient\Support\Logger;
 use GeekCo\LaravelMaxClient\Tests\TestCase;
 use Illuminate\Log\Events\MessageLogged;
 use Illuminate\Support\Facades\Log;
-use Psr\Log\LoggerInterface;
 
 final class LoggerTest extends TestCase
 {
@@ -34,7 +33,17 @@ final class LoggerTest extends TestCase
     {
         $this->enableLogging(['channel' => 'single']);
 
-        $this->assertInstanceOf(LoggerInterface::class, $this->logger()->logger());
+        $this->assertSame(Log::channel('single'), $this->logger()->logger());
+    }
+
+    public function testLoggerFallsBackToConfiguredFallbackChannelWhenChannelIsMissing(): void
+    {
+        $this->enableLogging([
+            'channel' => 'missing-channel',
+            'fallback_channel' => 'single',
+        ]);
+
+        $this->assertSame(Log::channel('single'), $this->logger()->logger());
     }
 
     public function testLoggerFallsBackToStackWhenChannelsAreMissing(): void
@@ -44,7 +53,7 @@ final class LoggerTest extends TestCase
             'fallback_channel' => 'another-missing-channel',
         ]);
 
-        $this->assertInstanceOf(LoggerInterface::class, $this->logger()->logger());
+        $this->assertSame(Log::channel('stack'), $this->logger()->logger());
     }
 
     public function testLogIsNoopWhenDisabled(): void
