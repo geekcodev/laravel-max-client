@@ -36,8 +36,10 @@ abstract class TestCase extends Orchestra
     protected function messageResponse(): Response
     {
         return new Response(200, [], json_encode([
-            'recipient' => ['chat_id' => 42],
-            'timestamp' => 1700000000000,
+            'message' => [
+                'recipient' => ['chat_id' => 42],
+                'timestamp' => 1700000000000,
+            ],
         ], JSON_THROW_ON_ERROR));
     }
 

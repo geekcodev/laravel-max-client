@@ -56,9 +56,7 @@ final class MaxFacadeTest extends TestCase
 
     private function pinnedMessageResponse(): Response
     {
-        $message = json_decode((string) $this->messageResponse()->getBody(), true, 512, JSON_THROW_ON_ERROR);
-
-        return new Response(200, [], json_encode(['message' => $message], JSON_THROW_ON_ERROR));
+        return $this->messageResponse();
     }
 
     private function chatAdminsResponse(): Response
