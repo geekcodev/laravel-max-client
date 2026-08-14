@@ -50,7 +50,7 @@ src/
   Console/MaxListenCommand.php     artisan max:listen: Long Polling для локальной разработки (--once)
   Console/MaxSubscribeCommand.php  artisan max:subscribe: регистрация webhook-подписки (HTTPS + allowed_hosts)
   Console/MaxUnsubscribeCommand.php artisan max:unsubscribe: удаление webhook-подписки
-  WebApp/WebAppContext.php         верификация WebAppData мини-приложения (resolve/verify из Request)
+  WebApp/WebAppContext.php         верификация WebAppData мини-приложения (resolve/verify из Request и из строки)
   WebApp/ResolveWebAppIdentity.php middleware max.webapp: сессия user_id/chat_id + strict (403)
   Enums/BotChatStatus.php          статусы реестра чатов (active/stopped/removed + label())
   Models/BotChat.php               модель реестра чатов bot_chats (переопределяемая через chats.model)
@@ -143,12 +143,14 @@ scripts/check-coverage.php         порог покрытия строк (по 
 - **`WebApp\WebAppContext`** (`src/WebApp/WebAppContext.php`): верификация стартовых данных мини-приложения. Конструктор
   принимает `WebAppDataValidator` из ядра (singleton в контейнере, token из `api_token`, maxAge из
   `config('laravel-max-client.webapp.max_age')`). Методы:
-    - `resolve(Request): ?WebAppIdentity` — верифицирует `?WebAppData=...` из query и возвращает идентичность
-      (user/chat)
-      либо `null` при невалидных/просроченных данных. Это **обязательная** проверка — без неё любой может подделать
+    - `resolveData(string): ?WebAppIdentity` — верифицирует строку WebAppData и возвращает идентичность (user/chat)
+      либо `null` при невалидных/просроченных данных. **Основной путь**: MAX открывает мини-приложение по URL с
+      `#WebAppData=...` в **фрагменте**, который до сервера не доходит, — фронт передаёт строку (например, заголовком
+      `X-Max-WebApp-Data`), сервер вызывает этот метод. Это **обязательная** проверка — без неё любой может подделать
       `user_id`/`chat_id`;
-    - `verify(Request): bool` — булева проверка без резолва identity. Роутинг в мини-приложении — приложение: пакет
-      поставляет только сервис. Значение `auth_date` сверяется с
+    - `verifyData(string): bool` — булева проверка строки без резолва identity;
+    - `resolve(Request): ?WebAppIdentity` — `?WebAppData=...` из query (фолбэк/dev-путь), делегирует `resolveData()`;
+    - `verify(Request): bool` — булева проверка из Request, делегирует `verifyData()`. Значение `auth_date` сверяется с
       `webapp.max_age` (env `MAX_WEBAPP_MAX_AGE`, default 86400; `0` — не проверять).
 - **`ResolveWebAppIdentity`** (алиас `max.webapp`): middleware верифицирует WebAppData через `WebAppContext`, кладёт
   `user_id`/`chat_id` в сессию (ключи `webapp.session.*`, env `MAX_WEBAPP_SESSION_*`) и в атрибут запроса

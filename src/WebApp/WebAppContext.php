@@ -28,7 +28,15 @@ final readonly class WebAppContext
     {
         $webAppData = $request->query('WebAppData');
 
-        return is_string($webAppData) && $this->validator->verify($webAppData);
+        return is_string($webAppData) && $this->verifyData($webAppData);
+    }
+
+    /**
+     * Верифицированы ли переданные стартовые данные мини-приложения.
+     */
+    public function verifyData(string $webAppData): bool
+    {
+        return $this->validator->verify($webAppData);
     }
 
     /**
@@ -38,6 +46,14 @@ final readonly class WebAppContext
     {
         $webAppData = $request->query('WebAppData');
 
-        return is_string($webAppData) ? $this->validator->resolve($webAppData) : null;
+        return is_string($webAppData) ? $this->resolveData($webAppData) : null;
+    }
+
+    /**
+     * Верифицированные user_id/chat_id из переданной строки или null.
+     */
+    public function resolveData(string $webAppData): ?WebAppIdentity
+    {
+        return $this->validator->resolve($webAppData);
     }
 }

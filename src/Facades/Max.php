@@ -31,7 +31,7 @@ use Illuminate\Support\Facades\Facade;
  * @method static array<int, \GeekCo\MaxPhpClient\Dto\Update> getUpdates(?int $limit = null, ?int $timeout = null, ?int $marker = null, ?array<int, string> $types = null)
  * @method static array<int, \GeekCo\MaxPhpClient\Dto\Message> getMessages(?int $chatId = null, ?array<int, int> $messageIds = null, ?int $from = null, ?int $to = null, ?int $count = null)
  * @method static \GeekCo\MaxPhpClient\Dto\Message sendMessage(\GeekCo\MaxPhpClient\Dto\Recipient $recipient, \GeekCo\MaxPhpClient\Dto\NewMessageBody $body, ?bool $disableLinkPreview = null)
- * @method static \GeekCo\MaxPhpClient\Dto\Message editMessage(string $messageId, \GeekCo\MaxPhpClient\Dto\NewMessageBody $body)
+ * @method static \GeekCo\MaxPhpClient\Dto\SuccessResponse editMessage(string $messageId, \GeekCo\MaxPhpClient\Dto\NewMessageBody $body)
  * @method static \GeekCo\MaxPhpClient\Dto\SuccessResponse deleteMessage(string $messageId)
  * @method static \GeekCo\MaxPhpClient\Dto\Message getMessageById(string $messageId)
  * @method static \GeekCo\MaxPhpClient\Dto\VideoInfo getVideoInfo(string $videoToken)

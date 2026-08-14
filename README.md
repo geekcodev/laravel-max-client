@@ -130,9 +130,25 @@ class WebAppController
 }
 ```
 
-Значение берётся из query-параметра `?WebAppData=...` (именно так MAX открывает мини-приложение). Свежесть `auth_date`
-проверяется по `MAX_WEBAPP_MAX_AGE` (по умолчанию 86400 сек; `0` — не проверять). Сырой `WebAppDataValidator` доступен
-из контейнера для случаев, когда данные получены не из `Request`.
+Свежесть `auth_date` проверяется по `MAX_WEBAPP_MAX_AGE` (по умолчанию 86400 сек; `0` — не проверять). Сырой
+`WebAppDataValidator` доступен из контейнера для случаев, когда данные получены не из `Request`.
+
+> **Важно.** MAX открывает мини-приложение по URL `https://<domain>/webapp#WebAppData=...` — стартовые параметры лежат в
+> **URL-фрагменте** и до сервера не доходят. В вебхуке/на странице брать их из `?WebAppData=` нельзя: в реальном MAX его
+> нет. Поэтому фронт должен передать строку WebAppData (из фрагмента или `window.WebApp.initData`) в запросе —
+> например, заголовком `X-Max-WebApp-Data` — а сервер верифицировать её через `WebAppContext::verifyData()` /
+> `resolveData()`:
+
+```php
+$webAppData = $request->header('X-Max-WebApp-Data');
+
+if (is_string($webAppData) && $webAppContext->verifyData($webAppData)) {
+    $identity = $webAppContext->resolveData($webAppData);
+    // $identity->userId, $identity->chatId
+}
+```
+
+`verify(Request)`/`resolve(Request)` остаются для пути `?WebAppData=` (фолбэк/dev).
 
 ### Middleware `max.webapp` (сессия + strict)
 

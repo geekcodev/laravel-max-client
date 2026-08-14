@@ -49,6 +49,25 @@ final class WebAppContextTest extends TestCase
         $this->assertFalse($context->verify(new Request(['WebAppData' => ['a', 'b']])));
     }
 
+    public function testResolvesIdentityFromRawWebAppData(): void
+    {
+        $context = $this->app->make(WebAppContext::class);
+
+        $identity = $context->resolveData($this->validWebAppData(time()));
+
+        $this->assertInstanceOf(WebAppIdentity::class, $identity);
+        $this->assertSame(67890, $identity?->userId);
+        $this->assertSame(12345, $identity?->chatId);
+    }
+
+    public function testVerifiesRawWebAppData(): void
+    {
+        $context = $this->app->make(WebAppContext::class);
+
+        $this->assertTrue($context->verifyData($this->validWebAppData(time())));
+        $this->assertFalse($context->verifyData('not-a-web-app-data'));
+    }
+
     public function testRejectsInvalidSignature(): void
     {
         $context = $this->app->make(WebAppContext::class);
