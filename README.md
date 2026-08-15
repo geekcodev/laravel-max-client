@@ -11,7 +11,7 @@
 
 - PHP ^8.4
 - Laravel ^12.0|^13.0
-- `geekcodev/max-php-client` ^1.0.3
+- `geekcodev/max-php-client` ^1.0.6
 
 ## Установка
 
@@ -45,7 +45,8 @@ MAX_API_TOKEN=your-bot-access-token
 | `MAX_WEBHOOK_QUEUE`                        | `default`                                | Очередь для джобов обработки Update                                    |
 | `MAX_WEBHOOK_PATH`                         | `/max/webhook`                           | Путь вебхук-роута                                                      |
 | `MAX_RETRY_*`                              | 3 / 1 / 30 / 2 / false                   | Ретраи (попытки/базовая/макс. задержка/фактор/не-идемпотентные)        |
-| `MAX_RATE_LIMIT_*`                         | 2.0 / 2.0                                | Token bucket: токенов в секунду / максимум                             |
+| `MAX_RATE_LIMIT_*`                         | 2.0 / 2.0                                | Token bucket на диалог/чат/канал: токенов в секунду / максимум         |
+| `MAX_GLOBAL_RATE_LIMIT_*`                  | 30.0 / 30.0                              | Глобальный token bucket на весь API (ожидание, не ошибка)              |
 | `MAX_WEBAPP_MAX_AGE`                       | `86400`                                  | Срок жизни `auth_date` мини-приложения, сек (0 — не проверять)         |
 | `MAX_WEBAPP_STRICT`                        | `false`                                  | `max.webapp` возвращает 403 без валидного WebAppData                   |
 | `MAX_WEBAPP_SESSION_USER_ID`               | `user_id`                                | Ключ сессии для user_id (middleware `max.webapp`)                      |
@@ -54,7 +55,7 @@ MAX_API_TOKEN=your-bot-access-token
 | `MAX_WEBAPP_FRAME_ANCESTORS`               | `https://max.ru,https://web.max.ru`      | Хосты, которым разрешено встраивать мини-приложение (через запятую)    |
 | `MAX_CHATS_ENABLED`                        | `false`                                  | Включает реестр чатов `bot_chats` (слушатель `PersistBotChatListener`) |
 | `MAX_CHATS_MODEL`                          | `GeekCo\LaravelMaxClient\Models\BotChat` | Модель реестра чатов (для переопределения)                             |
-| `MAX_LOGGING_ENABLED`                      | `false`                                  | Включает логирование (middleware `max_bot.log`)                        |
+| `MAX_LOGGING_ENABLED`                      | `false`                                  | Включает логирование (middleware `max.log`)                           |
 | `MAX_LOGGING_CHANNEL`                      | `stack`                                  | Канал Laravel для логов                                                |
 | `MAX_LOGGING_FALLBACK_CHANNEL`             | `laravel-max-client`                     | Запасной канал, если основной не определён                             |
 | `MAX_LOGGING_LOG_REQUEST_BODY`             | `false`                                  | Логировать тело запроса (секреты маскируются)                          |
@@ -86,7 +87,7 @@ $admins = Max::getChatAdmins($chatId); // ChatAdminsResult::$members
 ```
 
 Список доступных методов — в PHPDoc фасада `GeekCo\LaravelMaxClient\Facades\Max` и в ядре
-`GeekCo\MaxPhpClient\ApiClient` (актуальные сигнатуры — v1.0.3).
+`GeekCo\MaxPhpClient\ApiClient` (актуальные сигнатуры — v1.0.6).
 
 Полные рабочие примеры — в каталоге [`examples/`](examples/):
 `basic-usage.php` (фасад), `webhook-listener.php` (обработка апдейтов),
@@ -292,7 +293,7 @@ php artisan max:listen
 
 > Активная webhook-подписка отключает Long Polling — не используйте оба механизма одновременно.
 
-## Логирование (middleware `max_bot.log`)
+## Логирование (middleware `max.log`)
 
 Опциональное логирование входящих запросов/ответов и обработки апдейтов. По умолчанию выключено (fail-safe). При
 `MAX_LOGGING_ENABLED=true` middleware автоматически подключается к роуту вебхука **перед** `VerifyMaxWebhookSecret` — в
@@ -316,7 +317,7 @@ MAX_LOGGING_CHANNEL=max   # канал нужно определить в config
 Для остальных роутов (например мини-приложения) подключайте alias вручную:
 
 ```php
-Route::get('/webapp', WebAppController::class)->middleware(['max.webapp', 'max_bot.log']);
+Route::get('/webapp', WebAppController::class)->middleware(['max.webapp', 'max.log']);
 ```
 
 Пути из `logging.exclude_paths` полностью пропускаются, из `exclude_request_body_paths` /

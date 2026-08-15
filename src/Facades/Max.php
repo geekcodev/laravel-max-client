@@ -20,7 +20,7 @@ use Illuminate\Support\Facades\Facade;
  * @method static \GeekCo\MaxPhpClient\Dto\ChatMember getBotMembership(int $chatId)
  * @method static \GeekCo\MaxPhpClient\Dto\SuccessResponse removeBotFromChat(int $chatId)
  * @method static \GeekCo\MaxPhpClient\Dto\ChatAdminsResult getChatAdmins(int $chatId, ?int $marker = null, ?int $count = null)
- * @method static \GeekCo\MaxPhpClient\Dto\SuccessResponse addChatAdmin(int $chatId, int $userId, array<int, \GeekCo\MaxPhpClient\Enum\ChatAdminPermission> $permissions, ?string $alias = null)
+ * @method static \GeekCo\MaxPhpClient\Dto\SuccessResponse addChatAdmin(int $chatId, int $userId, array<int, \GeekCo\MaxPhpClient\Enum\ChatAdminPermission> $permissions, ?string $alias = null, ?int $marker = null)
  * @method static \GeekCo\MaxPhpClient\Dto\SuccessResponse removeChatAdmin(int $chatId, int $userId)
  * @method static \GeekCo\MaxPhpClient\Dto\ChatMembersResult getChatMembers(int $chatId, ?array<int, int> $userIds = null, ?int $marker = null, ?int $count = null)
  * @method static \GeekCo\MaxPhpClient\Dto\AddChatMembersResult addChatMembers(int $chatId, array<int, int> $userIds)

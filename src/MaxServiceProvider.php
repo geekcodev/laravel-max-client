@@ -89,6 +89,10 @@ final class MaxServiceProvider extends ServiceProvider
                     tokensPerSecond: $config->rateLimitTokensPerSecond(),
                     maxTokens: $config->rateLimitMaxTokens(),
                 ),
+                globalRateLimiter: new RateLimiter(
+                    tokensPerSecond: $config->globalRateLimitTokensPerSecond(),
+                    maxTokens: $config->globalRateLimitMaxTokens(),
+                ),
             );
         });
 
@@ -133,7 +137,7 @@ final class MaxServiceProvider extends ServiceProvider
         $router = $this->app->make(Router::class);
         $router->aliasMiddleware('max.webapp', ResolveWebAppIdentity::class);
         $router->aliasMiddleware('max.csp', SetMaxFrameAncestors::class);
-        $router->aliasMiddleware('max_bot.log', LogMaxRequestsMiddleware::class);
+        $router->aliasMiddleware('max.log', LogMaxRequestsMiddleware::class);
 
         $config = $this->app->make(Config::class);
         if ($config->webhookEnabled() && $config->webhookSecret() !== null) {

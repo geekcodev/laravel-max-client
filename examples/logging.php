@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-// Логирование запросов/ответов MAX (middleware max_bot.log, введено в v1.0.5).
+// Логирование запросов/ответов MAX (middleware max.log, введено в v1.0.5).
 //
 // Пример рассчитан на Laravel-приложение, в котором установлен пакет
 // geekcodev/laravel-max-client. По умолчанию логирование ВЫКЛЮЧЕНО (A09):

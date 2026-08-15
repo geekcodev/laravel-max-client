@@ -30,7 +30,8 @@
 
 ## 3. Правила для ИИ-агентов
 
-1. В начале работы прочитай `AGENTS.md` и `README.md`.
+1. В начале работы прочитай `AGENTS.md` и `README.md`; при задачах на обновление под новую версию ядра/`max-openapi`
+   также читай протокол обновления `.ai/upgrade/UPGRADE_PLAN.md`.
 2. **Не коммить и не пушить без явного запроса пользователя.**
 3. Перед завершением любой задачи, менявшей код, прогони обязательный Gate (раздел 7) целиком. Результаты не подменяй;
    недоступный шаг честно указывай в отчёте, а не пропускай молча.
@@ -57,7 +58,7 @@ src/
   Listeners/PersistBotChatListener.php upsert bot_chats по bot_added/bot_started/bot_stopped/bot_removed
   Http/HttpClientFactory.php       SRP: сборка PSR-18/17 клиентов (Guzzle по умолчанию)
   Http/Middleware/SetMaxFrameAncestors.php middleware max.csp: frame-ancestors для встраивания в MAX
-  Http/Middleware/LogMaxRequestsMiddleware.php middleware max_bot.log: лог request/response
+  Http/Middleware/LogMaxRequestsMiddleware.php middleware max.log: лог request/response
   Facades/Max.php                  фасад поверх ApiClient (из контейнера)
   Contracts/MaxClient.php          интерфейс-фасад-прокси (необязательный, решает KISS при реализации)
   Support/Config.php               stateless readonly-доступ к config('max.*') (live-read из репозитория)
@@ -111,7 +112,8 @@ scripts/check-coverage.php         порог покрытия строк (по 
     - PSR-18 клиент — из контейнера (`Psr\Http\Client\ClientInterface`); если не зарегистрирован — Guzzle с опциями из
       `http.options` (timeout, verify, connect_timeout);
     - PSR-17 фабрики — `GuzzleHttp\Psr7\HttpFactory`;
-    - `RetryStrategy`, `RateLimiter` — из конфига (`retry.*`, `rate_limit.*`), при пустых значениях — дефолты ядра.
+    - `RetryStrategy`, `RateLimiter` (per-chat и глобальный) — из конфига (`retry.*`, `rate_limit.*`,
+      `global_rate_limit.*`), при пустых значениях — дефолты ядра.
 - **Facade `Max`**: резолвит `ApiClient` из контейнера, PHPDoc `@method` покрывает всё API ядра (синхронизировать с
   `ApiClient` при обновлении ядра). Пример:
   ```php
@@ -162,7 +164,7 @@ scripts/check-coverage.php         порог покрытия строк (по 
   `frame-ancestors 'self' <hosts>` (хосты из `webapp.frame_ancestors.hosts`, env `MAX_WEBAPP_FRAME_ANCESTORS`, default
   `max.ru`/`web.max.ru`); если CSP-заголовок уже задан — дописывает. Отключение — `webapp.frame_ancestors.enabled`
   (`MAX_WEBAPP_CSP_ENABLED`).
-- **`LogMaxRequestsMiddleware`** (алиас `max_bot.log`): лог request (`Incoming MAX request`) и response (`MAX response`,
+- **`LogMaxRequestsMiddleware`** (алиас `max.log`): лог request (`Incoming MAX request`) и response (`MAX response`,
   `duration_ms`), уровни 2xx→info / 4xx→warning / 5xx→error. Включение — `logging.enabled`
   (`MAX_LOGGING_ENABLED`, default `false`). При включении провайдер автоматически подключает middleware к роуту вебхука
   **перед** `VerifyMaxWebhookSecret`; для остальных роутов — алиас в middleware роута. Тело — только при
@@ -197,8 +199,9 @@ scripts/check-coverage.php         порог покрытия строк (по 
 - Тесты обязательны для нового кода: unit на компоненты пакета; HTTP-слой — через `tests/Support/MockHttpClient`
   (PSR-18) или подмену `ClientInterface` в контейнере Testbench. Интеграционные — read-only, группа `integration`, без
   токена `markTestSkipped` (не падать).
-- `composer.json` constraints на момент разработки: `php ^8.4`, `geekcodev/max-php-client ^1.0.3` (WebAppDataValidator
-  появился в v1.0.1 ядра; `Update::$user` nullable и фолбэки `user`/`chat_id` — с v1.0.3 — версия ниже не резолвит
+- `composer.json` constraints на момент разработки: `php ^8.4`, `geekcodev/max-php-client ^1.0.6` (WebAppDataValidator
+  появился в v1.0.1 ядра; `Update::$user` nullable и фолбэки `user`/`chat_id` — с v1.0.3; `ApiClient::create()` с
+  `global_rate_limiter`, deprecated-права админов и пустое тело `sendAnswer` — с v1.0.6 — версия ниже не резолвит
   актуальные сигнатуры),
   `laravel/framework ^12.0|^13.0`, `guzzlehttp/guzzle ^7.15` (обязателен как PSR-18 по умолчанию),
   `illuminate/support`/`illuminate/queue`/`illuminate/routing` — через `laravel/framework`; dev — Testbench под
@@ -217,7 +220,7 @@ scripts/check-coverage.php         порог покрытия строк (по 
 - **A05** — publishable-конфиг с безопасными дефолтами; `php artisan config:cache` безопасен для `env()`
   (использовать только на этапе конфига); секреты не попадают в `config:show` без необходимости (документировать
   маскирование при выводе).
-- **A06/A08** — актуальные зависимости: PHP ^8.4, ядро ^1.0.3, `composer audit` в Gate и CI; CI на push/PR.
+- **A06/A08** — актуальные зависимости: PHP ^8.4, ядро ^1.0.6, `composer audit` в Gate и CI; CI на push/PR.
 - **A07** — все сравнения секретов — только `hash_equals` (ядро + middleware вебхука).
 - **A09** — не логировать: access token, webhook secret, `vcf_info`, callback payload, тела запросов с токеном.
   Логировать статус/код/сообщение ошибки API (в коде ядра сообщения не содержат токенов). Тела логируются только при
@@ -234,7 +237,11 @@ scripts/check-coverage.php         порог покрытия строк (по 
   200 за 30 сек, иначе повторы 60с→150с→375с→… (10 попыток ~8ч), затем автоотписка.
 - Активная webhook-подписка отключает Long Polling. Long Polling — только для разработки/тестов.
 - Rate limits: отправка/редактирование/удаление сообщений и ответы на callback — **макс. 2/сек** на диалог/чат/канал
-  (ядро: `RateLimiter`, token bucket).
+  (ядро: `RateLimiter`, token bucket); плюс **глобальный предохранитель 30 req/s** на весь API (применяется к каждому
+  запросу, включая ретраи и загрузку медиа; при исчерпании ядро ждёт пополнения, а не бросает исключение).
+- `sendAnswer()` без `message` шлёт тело `{}` (requestBody обязателен) — ответ на callback без обновления сообщения;
+  deprecated-права админов (`post_edit_delete_message`/`edit_message`/`delete_message`) API возвращает, но выдавать
+  нельзя (`addChatAdmin` кидает `InvalidArgumentException`); `join_time` — **миллисекунды**.
 - Загрузка медиа: `POST /uploads` с `type` в query; после загрузки **ждать** готовности вложения —
   `attachment.not.ready` ретраится автоматически. Домены загрузки: `https://fu.oneme.ru`,
   `https://iu.oneme.ru`, `https://vu.okcdn.ru`.
@@ -293,13 +300,15 @@ source .env && docker run --rm --network host \
   на уровне job запрещены GitHub Actions, передавать через job-level `env`).
 - **Релиз**: merge PR `dev → main` → `git tag vX.Y.Z && git push origin vX.Y.Z` → GitHub Release из тега → Packagist
   (автообновление по webhook). Тег ставится только на `main`.
+- **Релиз-ноты**: хранятся в `.ai/release/` (gitignored) за последние два релиза; формируются/обновляются по запросу
+  владельца после изменений, старые — удаляются. История в git не хранится.
 
 ## 9. Частые ошибки (gotchas)
 
 1. `WebhookHandler::decode()` возвращает `Update|list<Update>` — **не** итерировать без `instanceof`-проверки.
 2. Токен — без `Bearer`; только заголовок, не query (гарантирует ядро — не пробрасывать в query вручную).
 3. `attachment.not.ready` — вложение ещё не готово: ядро ретраит само, не дублировать ретрай на уровне пакета.
-4. `join_time` — секунды; остальные timestamp — миллисекунды.
+4. `join_time` — **миллисекунды** (все timestamp API — Unix в миллисекундах).
 5. Из Docker-сети TLS до API блокируется — только `--network host`.
 6. Имя переменной — только `MAX_API_TOKEN` (старое `MAX_ACCESS_TOKEN` не используется).
 7. `getChats` deprecated — хранить `chat_id` через `bot_added`/`bot_started`.
