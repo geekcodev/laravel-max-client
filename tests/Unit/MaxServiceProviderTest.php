@@ -21,6 +21,7 @@ use GeekCo\MaxPhpClient\Dto\Update;
 use GeekCo\MaxPhpClient\Exception\ApiException;
 use GeekCo\MaxPhpClient\Exception\RateLimitException;
 use GeekCo\MaxPhpClient\LongPolling\LongPollingRunner;
+use GeekCo\MaxPhpClient\RateLimit\RateLimiter;
 use GeekCo\MaxPhpClient\Security\WebAppDataValidator;
 use GuzzleHttp\Psr7\Response;
 use Illuminate\Contracts\Events\Dispatcher;
@@ -106,6 +107,25 @@ final class MaxServiceProviderTest extends TestCase
         $client->sendMessage($recipient, new NewMessageBody(text: 'second'));
     }
 
+    public function testGlobalRateLimitConfigIsApplied(): void
+    {
+        $this->app['config']->set(MaxServiceProvider::CONFIG_KEY . '.global_rate_limit.max_tokens', 60.0);
+        $this->app['config']->set(MaxServiceProvider::CONFIG_KEY . '.global_rate_limit.tokens_per_second', 50.0);
+
+        $mock = new MockHttpClient([$this->botInfoResponse()]);
+        $this->app->instance(ClientInterface::class, $mock);
+
+        $client = $this->app->make(ApiClient::class);
+        $client->getMe();
+
+        $http = (new \ReflectionProperty($client, 'http'))->getValue($client);
+        $limiter = (new \ReflectionProperty($http, 'globalRateLimiter'))->getValue($http);
+
+        $this->assertInstanceOf(RateLimiter::class, $limiter);
+        $this->assertSame(50.0, $limiter->tokensPerSecond);
+        $this->assertSame(60.0, $limiter->maxTokens);
+    }
+
     public function testConfigIsPublishable(): void
     {
         $this->app->boot();
@@ -136,7 +156,7 @@ final class MaxServiceProviderTest extends TestCase
 
         $this->assertSame(
             LogMaxRequestsMiddleware::class,
-            $this->app->router->getMiddleware()['max_bot.log'],
+            $this->app->router->getMiddleware()['max.log'],
         );
     }
 

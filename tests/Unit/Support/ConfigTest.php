@@ -41,6 +41,14 @@ final class ConfigTest extends TestCase
         $this->assertSame(2.0, $config->rateLimitMaxTokens());
     }
 
+    public function testGlobalRateLimitDefaults(): void
+    {
+        $config = $this->config();
+
+        $this->assertSame(30.0, $config->globalRateLimitTokensPerSecond());
+        $this->assertSame(30.0, $config->globalRateLimitMaxTokens());
+    }
+
     public function testWebhookDefaults(): void
     {
         $config = $this->config();
@@ -84,6 +92,8 @@ final class ConfigTest extends TestCase
         $this->app['config']->set(MaxServiceProvider::CONFIG_KEY . '.retry.base_delay_seconds', 0.5);
         $this->app['config']->set(MaxServiceProvider::CONFIG_KEY . '.retry.retry_on_non_idempotent', true);
         $this->app['config']->set(MaxServiceProvider::CONFIG_KEY . '.rate_limit.max_tokens', 1.0);
+        $this->app['config']->set(MaxServiceProvider::CONFIG_KEY . '.global_rate_limit.tokens_per_second', 50.0);
+        $this->app['config']->set(MaxServiceProvider::CONFIG_KEY . '.global_rate_limit.max_tokens', 60.0);
         $this->app['config']->set(MaxServiceProvider::CONFIG_KEY . '.webhook.enabled', true);
         $this->app['config']->set(MaxServiceProvider::CONFIG_KEY . '.webhook.secret', 's3cr3t');
         $this->app['config']->set(MaxServiceProvider::CONFIG_KEY . '.webhook.queue', 'webhooks');
@@ -110,6 +120,8 @@ final class ConfigTest extends TestCase
         $this->assertSame(0.5, $config->retryBaseDelaySeconds());
         $this->assertTrue($config->retryOnNonIdempotent());
         $this->assertSame(1.0, $config->rateLimitMaxTokens());
+        $this->assertSame(50.0, $config->globalRateLimitTokensPerSecond());
+        $this->assertSame(60.0, $config->globalRateLimitMaxTokens());
         $this->assertTrue($config->webhookEnabled());
         $this->assertSame('s3cr3t', $config->webhookSecret());
         $this->assertSame('webhooks', $config->webhookQueue());

@@ -65,6 +65,16 @@ final readonly class Config
         return $this->float('rate_limit.max_tokens', 2.0);
     }
 
+    public function globalRateLimitTokensPerSecond(): float
+    {
+        return $this->float('global_rate_limit.tokens_per_second', 30.0);
+    }
+
+    public function globalRateLimitMaxTokens(): float
+    {
+        return $this->float('global_rate_limit.max_tokens', 30.0);
+    }
+
     public function webhookEnabled(): bool
     {
         return $this->bool('webhook.enabled', false);
