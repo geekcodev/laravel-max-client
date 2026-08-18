@@ -165,13 +165,29 @@ return [
 
     /*
     |--------------------------------------------------------------------------
-    | Реестр чатов (bot_chats)
+    | Реестр пользователей (max_users)
+    |--------------------------------------------------------------------------
+    |
+    | При chats.enabled=true пакет создаёт/обновляет записи в max_users
+    | при получении bot_added/bot_started с объектом user. Миграция
+    | публикуется: php artisan vendor:publish
+    | --tag=laravel-max-client-migrations. model — класс модели (для переопределения).
+    |
+    */
+
+    'users' => [
+        'model' => (string) env('MAX_USERS_MODEL', \GeekCo\LaravelMaxClient\Models\MaxUser::class),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Реестр чатов (max_bot_chats)
     |--------------------------------------------------------------------------
     |
     | Готовая реализация документированной практики MAX: chat_id хранить через
     | подписку на bot_added/bot_started (getChats deprecated). При enabled=true
     | пакет регистрирует слушателя MaxUpdateReceived, который обновляет таблицу
-    | bot_chats. Миграция публикуется: php artisan vendor:publish
+    | max_bot_chats и linked max_users. Миграция публикуется: php artisan vendor:publish
     | --tag=laravel-max-client-migrations. model — класс модели (для переопределения).
     |
     */

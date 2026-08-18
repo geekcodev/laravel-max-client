@@ -6,6 +6,7 @@ namespace GeekCo\LaravelMaxClient\Tests\Unit\Support;
 
 use GeekCo\LaravelMaxClient\MaxServiceProvider;
 use GeekCo\LaravelMaxClient\Models\BotChat;
+use GeekCo\LaravelMaxClient\Models\MaxUser;
 use GeekCo\LaravelMaxClient\Support\Config;
 use GeekCo\LaravelMaxClient\Tests\Support\CustomBotChat;
 use GeekCo\LaravelMaxClient\Tests\TestCase;
@@ -180,6 +181,18 @@ final class ConfigTest extends TestCase
     public function testChatsModelDefaultsToBotChat(): void
     {
         $this->assertSame(BotChat::class, $this->config()->chatsModel());
+    }
+
+    public function testUsersModelDefaultsToMaxUser(): void
+    {
+        $this->assertSame(MaxUser::class, $this->config()->usersModel());
+    }
+
+    public function testUsersModelFallsBackWhenNotMaxUserSubclass(): void
+    {
+        $this->app['config']->set(MaxServiceProvider::CONFIG_KEY . '.users.model', \stdClass::class);
+
+        $this->assertSame(MaxUser::class, $this->config()->usersModel());
     }
 
     public function testChatsModelReturnsCustomSubclass(): void

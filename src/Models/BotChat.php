@@ -6,10 +6,11 @@ namespace GeekCo\LaravelMaxClient\Models;
 
 use GeekCo\LaravelMaxClient\Enums\BotChatStatus;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class BotChat extends Model
 {
-    protected $table = 'bot_chats';
+    protected $table = 'max_bot_chats';
 
     protected $fillable = [
         'user_id',
@@ -24,5 +25,13 @@ class BotChat extends Model
             'chat_id' => 'integer',
             'status' => BotChatStatus::class,
         ];
+    }
+
+    /**
+     * @return BelongsTo<MaxUser, $this>
+     */
+    public function maxUser(): BelongsTo
+    {
+        return $this->belongsTo(MaxUser::class, 'user_id', 'user_id');
     }
 }

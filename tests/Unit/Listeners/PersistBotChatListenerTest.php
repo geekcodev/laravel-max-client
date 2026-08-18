@@ -7,6 +7,7 @@ namespace GeekCo\LaravelMaxClient\Tests\Unit\Listeners;
 use GeekCo\LaravelMaxClient\Enums\BotChatStatus;
 use GeekCo\LaravelMaxClient\MaxServiceProvider;
 use GeekCo\LaravelMaxClient\Models\BotChat;
+use GeekCo\LaravelMaxClient\Models\MaxUser;
 use GeekCo\LaravelMaxClient\Tests\TestCase;
 use GeekCo\LaravelMaxClient\Webhook\MaxUpdateReceived;
 use GeekCo\MaxPhpClient\Dto\Update;
@@ -108,19 +109,125 @@ final class PersistBotChatListenerTest extends TestCase
         $this->assertSame(0, BotChat::query()->count());
     }
 
-    private function dispatch(UpdateType $type, ?int $chatId = 222, bool $withUser = true, ?int $userId = null): void
+    public function testBotAddedUpsertsUser(): void
     {
+        $this->dispatch(UpdateType::BotAdded);
+
+        $user = MaxUser::query()->sole();
+
+        $this->assertSame(111, $user->user_id);
+        $this->assertSame('Иван', $user->first_name);
+        $this->assertNull($user->last_name);
+        $this->assertNull($user->username);
+        $this->assertFalse($user->is_bot);
+    }
+
+    public function testBotAddedLinksChatToUser(): void
+    {
+        $this->dispatch(UpdateType::BotAdded);
+
+        $chat = BotChat::query()->sole();
+
+        $this->assertNotNull($chat->maxUser);
+        $this->assertSame(111, $chat->maxUser->user_id);
+    }
+
+    public function testBotStartedUpdatesExistingUser(): void
+    {
+        MaxUser::create([
+            'user_id' => 111,
+            'first_name' => 'Old',
+            'is_bot' => false,
+        ]);
+
+        $this->dispatch(UpdateType::BotStarted);
+
+        $user = MaxUser::query()->sole();
+
+        $this->assertSame('Иван', $user->first_name);
+    }
+
+    public function testBotStoppedPersistsUserWhenPresent(): void
+    {
+        $this->dispatch(UpdateType::BotStopped);
+
+        $user = MaxUser::query()->sole();
+        $chat = BotChat::query()->sole();
+
+        $this->assertSame(111, $user->user_id);
+        $this->assertSame(BotChatStatus::Stopped, $chat->status);
+        $this->assertNotNull($chat->maxUser);
+    }
+
+    public function testChatUpdateResolvesExistingUserViaRelation(): void
+    {
+        MaxUser::create([
+            'user_id' => 111,
+            'first_name' => 'Иван',
+            'is_bot' => false,
+        ]);
+
+        $this->dispatch(UpdateType::BotStarted, withUser: false, userId: 111);
+
+        $chat = BotChat::query()->sole();
+
+        $this->assertNotNull($chat->maxUser);
+        $this->assertSame(111, $chat->maxUser->user_id);
+    }
+
+    public function testChatUpdateReturnsNullUserWhenNotInMaxUsers(): void
+    {
+        $this->dispatch(UpdateType::BotStarted, withUser: false, userId: 999);
+
+        $chat = BotChat::query()->sole();
+
+        $this->assertNull($chat->maxUser);
+    }
+
+    public function testChatUpdateWithUserPersistsAllFields(): void
+    {
+        $this->dispatch(UpdateType::BotAdded, user: new User(
+            userId: 111,
+            firstName: 'Иван',
+            lastName: 'Петров',
+            username: 'ivan',
+            isBot: false,
+            lastActivityTime: 1700000000000,
+            name: 'Иван Петров',
+        ));
+
+        $user = MaxUser::query()->sole();
+
+        $this->assertSame(111, $user->user_id);
+        $this->assertSame('Иван', $user->first_name);
+        $this->assertSame('Петров', $user->last_name);
+        $this->assertSame('ivan', $user->username);
+        $this->assertFalse($user->is_bot);
+        $this->assertSame(1700000000000, $user->last_activity_time);
+        $this->assertSame('Иван Петров', $user->name);
+        $this->assertNull($user->description);
+        $this->assertNull($user->avatar_url);
+        $this->assertNull($user->full_avatar_url);
+    }
+
+    private function dispatch(
+        UpdateType $type,
+        ?int $chatId = 222,
+        bool $withUser = true,
+        ?int $userId = null,
+        ?User $user = null,
+    ): void {
         $update = new Update(
             updateType: $type,
             timestamp: 1000,
-            user: $withUser ? new User(
+            user: $user ?? ($withUser ? new User(
                 userId: 111,
                 firstName: 'Иван',
                 lastName: null,
                 username: null,
                 isBot: false,
                 lastActivityTime: 1000,
-            ) : null,
+            ) : null),
             chatId: $chatId,
             userId: $userId,
         );
