@@ -5,10 +5,11 @@ declare(strict_types=1);
 namespace GeekCo\LaravelMaxClient\Support;
 
 use GeekCo\LaravelMaxClient\Models\BotChat;
+use GeekCo\LaravelMaxClient\Models\MaxUser;
 
 final readonly class Config
 {
-    private const KEY = 'laravel-max-client';
+    private const string KEY = 'laravel-max-client';
 
     public function apiToken(): string
     {
@@ -218,6 +219,20 @@ final readonly class Config
     public function loggingExcludeResponseBodyPaths(): array
     {
         return $this->listOfStrings('logging.exclude_response_body_paths', []);
+    }
+
+    /**
+     * @return class-string<MaxUser>
+     */
+    public function usersModel(): string
+    {
+        $model = $this->string('users.model', MaxUser::class);
+
+        if (!is_a($model, MaxUser::class, true)) {
+            return MaxUser::class;
+        }
+
+        return $model;
     }
 
     /**

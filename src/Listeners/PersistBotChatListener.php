@@ -11,9 +11,10 @@ use GeekCo\MaxPhpClient\Enum\UpdateType;
 use Illuminate\Support\Facades\Log;
 
 /**
- * Реестр чатов: upsert bot_chats по апдейтам bot_added/bot_started/
+ * Реестр чатов: upsert max_bot_chats по апдейтам bot_added/bot_started/
  * bot_stopped/bot_removed (getChats deprecated — chat_id хранить через
- * подписку). Включается config('laravel-max-client.chats.enabled').
+ * подписку). При наличии user в апдейте — upsert в max_users.
+ * Включается config('laravel-max-client.chats.enabled').
  */
 final class PersistBotChatListener
 {
@@ -58,14 +59,37 @@ final class PersistBotChatListener
             return;
         }
 
-        $model = $this->config->chatsModel();
+        $this->upsertUser($user, $userId);
 
-        $model::query()->updateOrCreate(
+        $chatModel = $this->config->chatsModel();
+
+        $chatModel::query()->updateOrCreate(
             [
                 'user_id' => $userId,
                 'chat_id' => $update->chatId,
             ],
             ['status' => $status],
+        );
+    }
+
+    private function upsertUser(?\GeekCo\MaxPhpClient\Dto\User $user, int $userId): void
+    {
+        if ($user === null) {
+            return;
+        }
+
+        $userModel = $this->config->usersModel();
+
+        $userModel::query()->updateOrCreate(
+            ['user_id' => $userId],
+            [
+                'first_name' => $user->firstName,
+                'last_name' => $user->lastName,
+                'username' => $user->username,
+                'is_bot' => $user->isBot,
+                'last_activity_time' => $user->lastActivityTime,
+                'name' => $user->name,
+            ],
         );
     }
 }
