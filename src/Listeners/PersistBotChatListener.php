@@ -68,7 +68,10 @@ final class PersistBotChatListener
                 'user_id' => $userId,
                 'chat_id' => $update->chatId,
             ],
-            ['status' => $status],
+            [
+                'status' => $status,
+                'last_activity_at' => now(),
+            ],
         );
     }
 

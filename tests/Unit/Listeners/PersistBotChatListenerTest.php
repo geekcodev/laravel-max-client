@@ -122,6 +122,33 @@ final class PersistBotChatListenerTest extends TestCase
         $this->assertFalse($user->is_bot);
     }
 
+    public function testBotAddedSetsLastActivityAt(): void
+    {
+        $this->dispatch(UpdateType::BotAdded);
+
+        $chat = BotChat::query()->sole();
+
+        $this->assertNotNull($chat->last_activity_at);
+        $this->assertEqualsWithDelta(time(), $chat->last_activity_at->timestamp, 2);
+    }
+
+    public function testBotStartedUpdatesLastActivityAt(): void
+    {
+        $old = now()->subHour();
+        BotChat::create([
+            'user_id' => 111,
+            'chat_id' => 222,
+            'status' => BotChatStatus::Active,
+            'last_activity_at' => $old,
+        ]);
+
+        $this->dispatch(UpdateType::BotStarted);
+
+        $chat = BotChat::query()->sole();
+
+        $this->assertTrue($chat->last_activity_at->greaterThan($old));
+    }
+
     public function testBotAddedLinksChatToUser(): void
     {
         $this->dispatch(UpdateType::BotAdded);

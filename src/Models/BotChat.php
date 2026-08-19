@@ -16,6 +16,7 @@ class BotChat extends Model
         'user_id',
         'chat_id',
         'status',
+        'last_activity_at',
     ];
 
     protected function casts(): array
@@ -24,6 +25,7 @@ class BotChat extends Model
             'user_id' => 'integer',
             'chat_id' => 'integer',
             'status' => BotChatStatus::class,
+            'last_activity_at' => 'datetime',
         ];
     }
 
