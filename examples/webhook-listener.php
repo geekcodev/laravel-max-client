@@ -34,7 +34,7 @@ final class MaxWebhookListener
         switch ($update->updateType) {
             case UpdateType::BotAdded:
             case UpdateType::BotStarted:
-                // Реестр чатов bot_chats ведёт пакет (PersistBotChatListener,
+                // Реестр чатов max_chats ведёт пакет (PersistMaxChatListener,
                 // MAX_CHATS_ENABLED=true) — GET /chats deprecated, chat_id
                 // хранится через подписку на эти апдейты. Здесь — только
                 // бизнес-обработка события.

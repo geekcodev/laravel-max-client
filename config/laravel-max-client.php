@@ -177,24 +177,27 @@ return [
 
     'users' => [
         'model' => (string) env('MAX_USERS_MODEL', \GeekCo\LaravelMaxClient\Models\MaxUser::class),
+        'profile_from_active_chats' => filter_var(env('MAX_USERS_PROFILE_FROM_ACTIVE_CHATS', true), FILTER_VALIDATE_BOOLEAN),
+        'profile_batch_size' => (int) env('MAX_USERS_PROFILE_BATCH_SIZE', 50),
+        'profile_check_interval' => (int) env('MAX_USERS_PROFILE_CHECK_INTERVAL', 86400),
     ],
 
     /*
     |--------------------------------------------------------------------------
-    | Реестр чатов (max_bot_chats)
+    | Реестр чатов (max_chats)
     |--------------------------------------------------------------------------
     |
     | Готовая реализация документированной практики MAX: chat_id хранить через
     | подписку на bot_added/bot_started (getChats deprecated). При enabled=true
     | пакет регистрирует слушателя MaxUpdateReceived, который обновляет таблицу
-    | max_bot_chats и linked max_users. Миграция публикуется: php artisan vendor:publish
+    | max_chats и linked max_users. Миграция публикуется: php artisan vendor:publish
     | --tag=laravel-max-client-migrations. model — класс модели (для переопределения).
     |
     */
 
     'chats' => [
         'enabled' => filter_var(env('MAX_CHATS_ENABLED', false), FILTER_VALIDATE_BOOLEAN),
-        'model' => (string) env('MAX_CHATS_MODEL', \GeekCo\LaravelMaxClient\Models\BotChat::class),
+        'model' => (string) env('MAX_CHATS_MODEL', \GeekCo\LaravelMaxClient\Models\MaxChat::class),
     ],
 
     /*

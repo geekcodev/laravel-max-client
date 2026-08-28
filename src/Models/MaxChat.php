@@ -4,13 +4,13 @@ declare(strict_types=1);
 
 namespace GeekCo\LaravelMaxClient\Models;
 
-use GeekCo\LaravelMaxClient\Enums\BotChatStatus;
+use GeekCo\LaravelMaxClient\Enums\MaxChatStatus;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
-class BotChat extends Model
+class MaxChat extends Model
 {
-    protected $table = 'max_bot_chats';
+    protected $table = 'max_chats';
 
     protected $fillable = [
         'user_id',
@@ -24,7 +24,7 @@ class BotChat extends Model
         return [
             'user_id' => 'integer',
             'chat_id' => 'integer',
-            'status' => BotChatStatus::class,
+            'status' => MaxChatStatus::class,
             'last_activity_at' => 'datetime',
         ];
     }

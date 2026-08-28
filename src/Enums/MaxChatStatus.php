@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace GeekCo\LaravelMaxClient\Enums;
 
-enum BotChatStatus: string
+enum MaxChatStatus: string
 {
     case Active = 'active';
     case Stopped = 'stopped';

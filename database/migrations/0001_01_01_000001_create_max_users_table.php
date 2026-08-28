@@ -20,6 +20,9 @@ return new class () extends Migration {
             $table->text('description')->nullable()->comment('Описание профиля пользователя');
             $table->string('avatar_url', 512)->nullable()->comment('URL аватара (маленькое изображение)');
             $table->string('full_avatar_url', 512)->nullable()->comment('URL полного аватара');
+            $table->string('phone', 32)->nullable()->comment('Телефон пользователя');
+            $table->string('email', 256)->nullable()->comment('Email пользователя');
+            $table->timestamp('profile_checked_at')->nullable()->comment('Время последней синхронизации профиля с MAX');
             $table->timestamps();
         });
     }

@@ -11,7 +11,8 @@ use GeekCo\LaravelMaxClient\Console\MaxUnsubscribeCommand;
 use GeekCo\LaravelMaxClient\Http\HttpClientFactory;
 use GeekCo\LaravelMaxClient\Http\Middleware\LogMaxRequestsMiddleware;
 use GeekCo\LaravelMaxClient\Http\Middleware\SetMaxFrameAncestors;
-use GeekCo\LaravelMaxClient\Listeners\PersistBotChatListener;
+use GeekCo\LaravelMaxClient\Listeners\PersistMaxChatListener;
+use GeekCo\LaravelMaxClient\Services\MaxUserProfileService;
 use GeekCo\LaravelMaxClient\Support\Config;
 use GeekCo\LaravelMaxClient\Support\Logger;
 use GeekCo\LaravelMaxClient\WebApp\ResolveWebAppIdentity;
@@ -33,7 +34,7 @@ use Illuminate\Support\ServiceProvider;
 
 final class MaxServiceProvider extends ServiceProvider
 {
-    public const CONFIG_KEY = 'laravel-max-client';
+    public const string CONFIG_KEY = 'laravel-max-client';
 
     public function register(): void
     {
@@ -65,6 +66,15 @@ final class MaxServiceProvider extends ServiceProvider
         $this->app->singleton(
             WebAppContext::class,
             static fn (Container $app): WebAppContext => new WebAppContext($app->make(WebAppDataValidator::class)),
+        );
+
+        $this->app->singleton(
+            MaxUserProfileService::class,
+            static fn (Container $app): MaxUserProfileService => new MaxUserProfileService(
+                $app->make(ApiClient::class),
+                $app->make(Config::class),
+                $app->make(Logger::class),
+            ),
         );
 
         $this->app->singleton(ApiClient::class, static function (Container $app): ApiClient {
@@ -156,7 +166,7 @@ final class MaxServiceProvider extends ServiceProvider
         if ($config->chatsEnabled()) {
             $this->app->make(Dispatcher::class)->listen(
                 MaxUpdateReceived::class,
-                PersistBotChatListener::class,
+                PersistMaxChatListener::class,
             );
         }
     }

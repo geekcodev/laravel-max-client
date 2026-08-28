@@ -13,6 +13,13 @@ final class MockHttpClient implements ClientInterface
 {
     public ?RequestInterface $lastRequest = null;
 
+    /**
+     * Все запросы в порядке отправки (для проверки батчинга и т.п.).
+     *
+     * @var list<RequestInterface>
+     */
+    public array $requests = [];
+
     public int $callCount = 0;
 
     /**
@@ -38,6 +45,7 @@ final class MockHttpClient implements ClientInterface
     public function sendRequest(RequestInterface $request): ResponseInterface
     {
         $this->lastRequest = $request;
+        $this->requests[] = $request;
         ++$this->callCount;
 
         $response = $this->responses[$this->index] ?? null;

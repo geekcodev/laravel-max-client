@@ -9,7 +9,7 @@ use Illuminate\Support\Facades\Schema;
 return new class () extends Migration {
     public function up(): void
     {
-        Schema::create('max_bot_chats', function (Blueprint $table): void {
+        Schema::create('max_chats', function (Blueprint $table): void {
             $table->id();
             $table->unsignedBigInteger('user_id')->comment('Идентификатор пользователя MAX');
             $table->unsignedBigInteger('chat_id')->comment('Идентификатор чата в MAX');
@@ -23,6 +23,6 @@ return new class () extends Migration {
 
     public function down(): void
     {
-        Schema::dropIfExists('max_bot_chats');
+        Schema::dropIfExists('max_chats');
     }
 };

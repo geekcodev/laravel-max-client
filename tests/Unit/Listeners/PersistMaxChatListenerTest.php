@@ -4,9 +4,9 @@ declare(strict_types=1);
 
 namespace GeekCo\LaravelMaxClient\Tests\Unit\Listeners;
 
-use GeekCo\LaravelMaxClient\Enums\BotChatStatus;
+use GeekCo\LaravelMaxClient\Enums\MaxChatStatus;
 use GeekCo\LaravelMaxClient\MaxServiceProvider;
-use GeekCo\LaravelMaxClient\Models\BotChat;
+use GeekCo\LaravelMaxClient\Models\MaxChat;
 use GeekCo\LaravelMaxClient\Models\MaxUser;
 use GeekCo\LaravelMaxClient\Tests\TestCase;
 use GeekCo\LaravelMaxClient\Webhook\MaxUpdateReceived;
@@ -16,7 +16,7 @@ use GeekCo\MaxPhpClient\Enum\UpdateType;
 use Illuminate\Contracts\Events\Dispatcher;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 
-final class PersistBotChatListenerTest extends TestCase
+final class PersistMaxChatListenerTest extends TestCase
 {
     use RefreshDatabase;
 
@@ -35,78 +35,78 @@ final class PersistBotChatListenerTest extends TestCase
     {
         $this->dispatch(UpdateType::BotAdded);
 
-        $chat = BotChat::query()->sole();
+        $chat = MaxChat::query()->sole();
 
         $this->assertSame(111, $chat->user_id);
         $this->assertSame(222, $chat->chat_id);
-        $this->assertSame(BotChatStatus::Active, $chat->status);
+        $this->assertSame(MaxChatStatus::Active, $chat->status);
     }
 
     public function testBotStartedCreatesActiveChat(): void
     {
         $this->dispatch(UpdateType::BotStarted);
 
-        $this->assertSame(BotChatStatus::Active, BotChat::query()->sole()->status);
+        $this->assertSame(MaxChatStatus::Active, MaxChat::query()->sole()->status);
     }
 
     public function testBotStartedReactivatesExistingChat(): void
     {
-        BotChat::create([
+        MaxChat::create([
             'user_id' => 111,
             'chat_id' => 222,
-            'status' => BotChatStatus::Stopped,
+            'status' => MaxChatStatus::Stopped,
         ]);
 
         $this->dispatch(UpdateType::BotStarted);
 
-        $this->assertSame(1, BotChat::query()->count());
-        $this->assertSame(BotChatStatus::Active, BotChat::query()->sole()->status);
+        $this->assertSame(1, MaxChat::query()->count());
+        $this->assertSame(MaxChatStatus::Active, MaxChat::query()->sole()->status);
     }
 
     public function testBotStoppedMarksChatStopped(): void
     {
         $this->dispatch(UpdateType::BotStopped);
 
-        $this->assertSame(BotChatStatus::Stopped, BotChat::query()->sole()->status);
+        $this->assertSame(MaxChatStatus::Stopped, MaxChat::query()->sole()->status);
     }
 
     public function testBotRemovedMarksChatRemoved(): void
     {
         $this->dispatch(UpdateType::BotRemoved);
 
-        $this->assertSame(BotChatStatus::Removed, BotChat::query()->sole()->status);
+        $this->assertSame(MaxChatStatus::Removed, MaxChat::query()->sole()->status);
     }
 
     public function testChatUpdateWithoutChatIdIsSkipped(): void
     {
         $this->dispatch(UpdateType::BotStarted, chatId: null);
 
-        $this->assertSame(0, BotChat::query()->count());
+        $this->assertSame(0, MaxChat::query()->count());
     }
 
     public function testChatUpdateWithoutUserAndUserIdIsSkipped(): void
     {
         $this->dispatch(UpdateType::BotStarted, withUser: false);
 
-        $this->assertSame(0, BotChat::query()->count());
+        $this->assertSame(0, MaxChat::query()->count());
     }
 
     public function testChatUpdateWithTopLevelUserIdIsPersisted(): void
     {
         $this->dispatch(UpdateType::BotStarted, withUser: false, userId: 111);
 
-        $chat = BotChat::query()->sole();
+        $chat = MaxChat::query()->sole();
 
         $this->assertSame(111, $chat->user_id);
         $this->assertSame(222, $chat->chat_id);
-        $this->assertSame(BotChatStatus::Active, $chat->status);
+        $this->assertSame(MaxChatStatus::Active, $chat->status);
     }
 
     public function testNonChatUpdateTypeIsIgnored(): void
     {
         $this->dispatch(UpdateType::MessageCreated);
 
-        $this->assertSame(0, BotChat::query()->count());
+        $this->assertSame(0, MaxChat::query()->count());
     }
 
     public function testBotAddedUpsertsUser(): void
@@ -120,13 +120,14 @@ final class PersistBotChatListenerTest extends TestCase
         $this->assertNull($user->last_name);
         $this->assertNull($user->username);
         $this->assertFalse($user->is_bot);
+        $this->assertNotNull($user->profile_checked_at);
     }
 
     public function testBotAddedSetsLastActivityAt(): void
     {
         $this->dispatch(UpdateType::BotAdded);
 
-        $chat = BotChat::query()->sole();
+        $chat = MaxChat::query()->sole();
 
         $this->assertNotNull($chat->last_activity_at);
         $this->assertEqualsWithDelta(time(), $chat->last_activity_at->timestamp, 2);
@@ -135,16 +136,16 @@ final class PersistBotChatListenerTest extends TestCase
     public function testBotStartedUpdatesLastActivityAt(): void
     {
         $old = now()->subHour();
-        BotChat::create([
+        MaxChat::create([
             'user_id' => 111,
             'chat_id' => 222,
-            'status' => BotChatStatus::Active,
+            'status' => MaxChatStatus::Active,
             'last_activity_at' => $old,
         ]);
 
         $this->dispatch(UpdateType::BotStarted);
 
-        $chat = BotChat::query()->sole();
+        $chat = MaxChat::query()->sole();
 
         $this->assertTrue($chat->last_activity_at->greaterThan($old));
     }
@@ -153,7 +154,7 @@ final class PersistBotChatListenerTest extends TestCase
     {
         $this->dispatch(UpdateType::BotAdded);
 
-        $chat = BotChat::query()->sole();
+        $chat = MaxChat::query()->sole();
 
         $this->assertNotNull($chat->maxUser);
         $this->assertSame(111, $chat->maxUser->user_id);
@@ -179,10 +180,10 @@ final class PersistBotChatListenerTest extends TestCase
         $this->dispatch(UpdateType::BotStopped);
 
         $user = MaxUser::query()->sole();
-        $chat = BotChat::query()->sole();
+        $chat = MaxChat::query()->sole();
 
         $this->assertSame(111, $user->user_id);
-        $this->assertSame(BotChatStatus::Stopped, $chat->status);
+        $this->assertSame(MaxChatStatus::Stopped, $chat->status);
         $this->assertNotNull($chat->maxUser);
     }
 
@@ -196,7 +197,7 @@ final class PersistBotChatListenerTest extends TestCase
 
         $this->dispatch(UpdateType::BotStarted, withUser: false, userId: 111);
 
-        $chat = BotChat::query()->sole();
+        $chat = MaxChat::query()->sole();
 
         $this->assertNotNull($chat->maxUser);
         $this->assertSame(111, $chat->maxUser->user_id);
@@ -206,7 +207,7 @@ final class PersistBotChatListenerTest extends TestCase
     {
         $this->dispatch(UpdateType::BotStarted, withUser: false, userId: 999);
 
-        $chat = BotChat::query()->sole();
+        $chat = MaxChat::query()->sole();
 
         $this->assertNull($chat->maxUser);
     }
