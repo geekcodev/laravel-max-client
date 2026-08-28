@@ -4,19 +4,19 @@ declare(strict_types=1);
 
 namespace GeekCo\LaravelMaxClient\Listeners;
 
-use GeekCo\LaravelMaxClient\Enums\BotChatStatus;
+use GeekCo\LaravelMaxClient\Enums\MaxChatStatus;
 use GeekCo\LaravelMaxClient\Support\Config;
 use GeekCo\LaravelMaxClient\Webhook\MaxUpdateReceived;
 use GeekCo\MaxPhpClient\Enum\UpdateType;
 use Illuminate\Support\Facades\Log;
 
 /**
- * Реестр чатов: upsert max_bot_chats по апдейтам bot_added/bot_started/
+ * Реестр чатов: upsert max_chats по апдейтам bot_added/bot_started/
  * bot_stopped/bot_removed (getChats deprecated — chat_id хранить через
  * подписку). При наличии user в апдейте — upsert в max_users.
  * Включается config('laravel-max-client.chats.enabled').
  */
-final class PersistBotChatListener
+final class PersistMaxChatListener
 {
     public function __construct(
         private readonly Config $config,
@@ -28,9 +28,9 @@ final class PersistBotChatListener
         $update = $event->update;
 
         $status = match ($update->updateType) {
-            UpdateType::BotAdded, UpdateType::BotStarted => BotChatStatus::Active,
-            UpdateType::BotStopped => BotChatStatus::Stopped,
-            UpdateType::BotRemoved => BotChatStatus::Removed,
+            UpdateType::BotAdded, UpdateType::BotStarted => MaxChatStatus::Active,
+            UpdateType::BotStopped => MaxChatStatus::Stopped,
+            UpdateType::BotRemoved => MaxChatStatus::Removed,
             default => null,
         };
 
@@ -92,6 +92,7 @@ final class PersistBotChatListener
                 'is_bot' => $user->isBot,
                 'last_activity_time' => $user->lastActivityTime,
                 'name' => $user->name,
+                'profile_checked_at' => now(),
             ],
         );
     }

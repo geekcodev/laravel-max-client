@@ -53,9 +53,13 @@ MAX_API_TOKEN=your-bot-access-token
 | `MAX_WEBAPP_SESSION_CHAT_ID`               | `chat_id`                                | Ключ сессии для chat_id (middleware `max.webapp`)                      |
 | `MAX_WEBAPP_CSP_ENABLED`                   | `true`                                   | Добавлять `frame-ancestors` в CSP (middleware `max.csp`)               |
 | `MAX_WEBAPP_FRAME_ANCESTORS`               | `https://max.ru,https://web.max.ru`      | Хосты, которым разрешено встраивать мини-приложение (через запятую)    |
-| `MAX_CHATS_ENABLED`                        | `false`                                  | Включает реестр чатов `bot_chats` (слушатель `PersistBotChatListener`) |
-| `MAX_CHATS_MODEL`                          | `GeekCo\LaravelMaxClient\Models\BotChat` | Модель реестра чатов (для переопределения)                             |
-| `MAX_LOGGING_ENABLED`                      | `false`                                  | Включает логирование (middleware `max.log`)                           |
+| `MAX_CHATS_ENABLED`                        | `false`                                  | Включает реестр чатов `max_chats` (слушатель `PersistMaxChatListener`) |
+| `MAX_CHATS_MODEL`                          | `GeekCo\LaravelMaxClient\Models\MaxChat` | Модель реестра чатов (для переопределения)                             |
+| `MAX_USERS_MODEL`                          | `GeekCo\LaravelMaxClient\Models\MaxUser` | Модель реестра пользователей (для переопределения)                     |
+| `MAX_USERS_PROFILE_FROM_ACTIVE_CHATS`      | `true`                                   | `MaxUserProfileService`: резолвить chat_id из активных `max_chats`     |
+| `MAX_USERS_PROFILE_BATCH_SIZE`             | `50`                                     | Лимит userIds на один вызов `getChatMembers` (батчинг)                |
+| `MAX_USERS_PROFILE_CHECK_INTERVAL`         | `86400`                                  | Периодичность перепроверки профиля в `ensureAvatar`, сек (0 — только при пустом аватаре) |
+| `MAX_LOGGING_ENABLED`                      | `false`                                  | Включает логирование (middleware `max.log`)                            |
 | `MAX_LOGGING_CHANNEL`                      | `stack`                                  | Канал Laravel для логов                                                |
 | `MAX_LOGGING_FALLBACK_CHANNEL`             | `laravel-max-client`                     | Запасной канал, если основной не определён                             |
 | `MAX_LOGGING_LOG_REQUEST_BODY`             | `false`                                  | Логировать тело запроса (секреты маскируются)                          |
@@ -189,7 +193,7 @@ Route::get('/webapp', WebAppController::class)->middleware(['max.webapp', 'max.c
 
 Отключение — `MAX_WEBAPP_CSP_ENABLED=false`, хосты — `MAX_WEBAPP_FRAME_ANCESTORS=https://a.ru,https://b.ru`.
 
-## Реестр чатов (bot_chats)
+## Реестр чатов (max_chats)
 
 Реализация документированной практики MAX: `getChats` deprecated, `chat_id` хранить через подписку на
 `bot_added`/`bot_started`. Пакет даёт готовую модель, миграцию и слушателя, обновляющего реестр по апдейтам
@@ -208,9 +212,42 @@ Route::get('/webapp', WebAppController::class)->middleware(['max.webapp', 'max.c
    MAX_CHATS_ENABLED=true
    ```
 
-Пакет регистрирует `PersistBotChatListener` на событие `MaxUpdateReceived` (таблица `bot_chats`, статусы
+Пакет регистрирует `PersistMaxChatListener` на событие `MaxUpdateReceived` (таблица `max_chats`, статусы
 `active`/`stopped`/`removed`). Модель можно переопределить через `MAX_CHATS_MODEL` (класс-наследник
-`GeekCo\LaravelMaxClient\Models\BotChat`).
+`GeekCo\LaravelMaxClient\Models\MaxChat`).
+
+## Профиль пользователя (MaxUserProfileService)
+
+В апдейтах MAX аватар не приходит — источник истины полноценного профиля (имя, описание, аватар) участники чата
+(`getChatMembers`). Пакет предоставляет `MaxUserProfileService` (singleton из контейнера) для заполнения полей
+`max_users`: `avatar_url`, `full_avatar_url`, `description` и др. «Когда вызывать» — решает приложение.
+
+```php
+use GeekCo\LaravelMaxClient\Services\MaxUserProfileService;
+
+$profile = app(MaxUserProfileService::class);
+
+// Подтянуть профили: chat_id берётся из активных max_chats (бот добавлен).
+$profile->refresh(111);                // один пользователь
+$profile->refresh([111, 222, 333]);    // группа
+
+// Сохранить профиль из DTO ChatMember (getChatMembers / getChatAdmins).
+$profile->upsertFromMember($member);
+
+// Дозаполнить аватар, если пуст. chatId — явное указание (без реестра).
+$profile->ensureAvatar($user);
+$profile->ensureAvatar($user, chatId: 222);
+```
+
+- `refresh()` группирует userIds по активным чатам в `max_chats` и батчит их по `users.profile_batch_size`
+  (`MAX_USERS_PROFILE_BATCH_SIZE`, по умолчанию 50) на вызов `getChatMembers`. Возвращает false, если активных
+  чатов нет или профили не обновились.
+- `users.profile_from_active_chats` (`MAX_USERS_PROFILE_FROM_ACTIVE_CHATS`, по умолчанию true) — искать chat_id
+  в реестре. При `false` `refresh()` пропускается, но явный `chatId` в `ensureAvatar()` работает всегда.
+- `ensureAvatar()` по умолчанию перепроверяет профиль раз в сутки
+  (`users.profile_check_interval`, `MAX_USERS_PROFILE_CHECK_INTERVAL`, по умолчанию `86400` = раз в сутки): пропуск,
+  только пока `profile_checked_at` свежее интервала. `0` — отключить периодичность (обновлять только при пустом
+  аватаре).
 
 ## Подписки (webhook)
 

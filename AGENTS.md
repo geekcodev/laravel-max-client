@@ -44,7 +44,7 @@
 
 ```
 config/laravel-max-client.php      publishable-конфиг (echo php artisan vendor:publish)
-database/migrations/               publishable-миграции (bot_chats; vendor:publish --tag=laravel-max-client-migrations)
+database/migrations/               publishable-миграции (max_chats; vendor:publish --tag=laravel-max-client-migrations)
 examples/                          рабочие примеры (фасад, webhook-listener, PSR-18, webapp, long-polling)
 src/
   MaxServiceProvider.php           composition root: publish, bindings, регистрация роута/фасада/алиасов middleware
@@ -53,9 +53,10 @@ src/
   Console/MaxUnsubscribeCommand.php artisan max:unsubscribe: удаление webhook-подписки
   WebApp/WebAppContext.php         верификация WebAppData мини-приложения (resolve/verify из Request и из строки)
   WebApp/ResolveWebAppIdentity.php middleware max.webapp: сессия user_id/chat_id + strict (403)
-  Enums/BotChatStatus.php          статусы реестра чатов (active/stopped/removed + label())
-  Models/BotChat.php               модель реестра чатов bot_chats (переопределяемая через chats.model)
-  Listeners/PersistBotChatListener.php upsert bot_chats по bot_added/bot_started/bot_stopped/bot_removed
+  Enums/MaxChatStatus.php        статусы реестра чатов (active/stopped/removed + label())
+  Models/MaxChat.php               модель реестра чатов max_chats (переопределяемая через chats.model)
+  Listeners/PersistMaxChatListener.php upsert max_chats по bot_added/bot_started/bot_stopped/bot_removed
+  Services/MaxUserProfileService.php  заполнение max_users (аватар/профиль) через getChatMembers
   Http/HttpClientFactory.php       SRP: сборка PSR-18/17 клиентов (Guzzle по умолчанию)
   Http/Middleware/SetMaxFrameAncestors.php middleware max.csp: frame-ancestors для встраивания в MAX
   Http/Middleware/LogMaxRequestsMiddleware.php middleware max.log: лог request/response
@@ -173,12 +174,21 @@ scripts/check-coverage.php         порог покрытия строк (по 
   `Support\Logger`, no-op при выключенном). `exclude_paths` (полный пропуск), `exclude_request_body_paths` /
   `exclude_response_body_paths` (без тела); `X-Request-ID` проксируется в ответ. `HandleMaxUpdateJob` логирует
   start/finish/failed (context: `update_type`, `user_id`, `chat_id`).
-- **Реестр чатов** (`bot_chats`): реализация документированной практики MAX (getChats deprecated — chat_id хранить через
-  `bot_added`/`bot_started`). Publishable-миграция, модель `Models\BotChat` (переопределяемая `chats.model`,
-  `MAX_CHATS_MODEL`), enum `Enums\BotChatStatus`, слушатель `Listeners\PersistBotChatListener` (upsert по
+- **Реестр чатов** (`max_chats`): реализация документированной практики MAX (getChats deprecated — chat_id хранить через
+  `bot_added`/`bot_started`). Publishable-миграция, модель `Models\MaxChat` (переопределяемая `chats.model`,
+  `MAX_CHATS_MODEL`), enum `Enums\MaxChatStatus`, слушатель `Listeners\PersistMaxChatListener` (upsert по
   `bot_added`/`bot_started`/`bot_stopped`/`bot_removed`, пропуск при `chat_id=null`). Включается `chats.enabled`
   (`MAX_CHATS_ENABLED`); регистрация слушателя на `MaxUpdateReceived` — в `MaxServiceProvider::boot()`. Это
   инфраструктура — бизнес-обработка остаётся в приложении.
+- **Профиль пользователя** (`Services\MaxUserProfileService`): наполнение `max_users` полноценным профилем (аватар
+  `avatar_url`/`full_avatar_url`, `name`, `description`) через ядро `getChatMembers` (в апдейтах аватар не приходит).
+  Singleton в контейнере (зависимости `ApiClient`, `Config`, `Logger`). API: `refresh(int|list<int>): bool`
+  (chat_id из активных `max_chats`, батчинг userIds по `users.profile_batch_size`, флаг
+  `users.profile_from_active_chats` отключает резолв из реестра), `upsertFromMember(ChatMember): MaxUser`
+  (`updateOrCreate`, пишет `profile_checked_at`), `ensureAvatar(MaxUser, ?int $chatId = null): bool` (пропуск при уже
+  заполненном аватаре; при `users.profile_check_interval` > 0 — периодическая перепроверка по `profile_checked_at` в
+  секундах (по умолчанию 86400 — раз в сутки); явный `chatId` работает без реестра). «Когда вызывать» —
+  ответственность приложения.
 - **Подписки** (`MaxSubscribeCommand`, `MaxUnsubscribeCommand`): `php artisan max:subscribe <url>` /
   `max:unsubscribe <url>`. URL — только HTTPS; при заданном `config('laravel-max-client.webhook.allowed_hosts')` хост
   сверяется до создания подписки (A10). Подписка — на рекомендованный набор апдейтов (`UpdateType::*`), секрет из

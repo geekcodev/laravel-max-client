@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace GeekCo\LaravelMaxClient\Support;
 
-use GeekCo\LaravelMaxClient\Models\BotChat;
+use GeekCo\LaravelMaxClient\Models\MaxChat;
 use GeekCo\LaravelMaxClient\Models\MaxUser;
 
 final readonly class Config
@@ -236,17 +236,41 @@ final readonly class Config
     }
 
     /**
-     * @return class-string<BotChat>
+     * @return class-string<MaxChat>
      */
     public function chatsModel(): string
     {
-        $model = $this->string('chats.model', BotChat::class);
+        $model = $this->string('chats.model', MaxChat::class);
 
-        if (!is_a($model, BotChat::class, true)) {
-            return BotChat::class;
+        if (!is_a($model, MaxChat::class, true)) {
+            return MaxChat::class;
         }
 
         return $model;
+    }
+
+    /**
+     * Резолвить chat_id для MaxUserProfileService из активных max_chats.
+     */
+    public function profileFromActiveChats(): bool
+    {
+        return $this->bool('users.profile_from_active_chats', true);
+    }
+
+    /**
+     * Лимит userIds на один вызов getChatMembers.
+     */
+    public function profileBatchSize(): int
+    {
+        return $this->int('users.profile_batch_size', 50);
+    }
+
+    /**
+     * Периодичность перепроверки профиля в ensureAvatar, сек (86400 — раз в сутки; 0 — только при пустом аватаре).
+     */
+    public function profileCheckInterval(): int
+    {
+        return $this->int('users.profile_check_interval', 86400);
     }
 
     private function string(string $key, string $default): string

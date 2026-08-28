@@ -5,10 +5,10 @@ declare(strict_types=1);
 namespace GeekCo\LaravelMaxClient\Tests\Unit\Support;
 
 use GeekCo\LaravelMaxClient\MaxServiceProvider;
-use GeekCo\LaravelMaxClient\Models\BotChat;
+use GeekCo\LaravelMaxClient\Models\MaxChat;
 use GeekCo\LaravelMaxClient\Models\MaxUser;
 use GeekCo\LaravelMaxClient\Support\Config;
-use GeekCo\LaravelMaxClient\Tests\Support\CustomBotChat;
+use GeekCo\LaravelMaxClient\Tests\Support\CustomMaxChat;
 use GeekCo\LaravelMaxClient\Tests\TestCase;
 
 final class ConfigTest extends TestCase
@@ -178,14 +178,34 @@ final class ConfigTest extends TestCase
         $this->assertSame([], $config->webhookAllowedHosts());
     }
 
-    public function testChatsModelDefaultsToBotChat(): void
+    public function testChatsModelDefaultsToChat(): void
     {
-        $this->assertSame(BotChat::class, $this->config()->chatsModel());
+        $this->assertSame(MaxChat::class, $this->config()->chatsModel());
     }
 
     public function testUsersModelDefaultsToMaxUser(): void
     {
         $this->assertSame(MaxUser::class, $this->config()->usersModel());
+    }
+
+    public function testProfileDefaults(): void
+    {
+        $config = $this->config();
+
+        $this->assertTrue($config->profileFromActiveChats());
+        $this->assertSame(50, $config->profileBatchSize());
+        $this->assertSame(86400, $config->profileCheckInterval());
+    }
+
+    public function testProfileCustomValues(): void
+    {
+        $this->app['config']->set(MaxServiceProvider::CONFIG_KEY . '.users.profile_from_active_chats', false);
+        $this->app['config']->set(MaxServiceProvider::CONFIG_KEY . '.users.profile_batch_size', 10);
+        $this->app['config']->set(MaxServiceProvider::CONFIG_KEY . '.users.profile_check_interval', 3600);
+
+        $this->assertFalse($this->config()->profileFromActiveChats());
+        $this->assertSame(10, $this->config()->profileBatchSize());
+        $this->assertSame(3600, $this->config()->profileCheckInterval());
     }
 
     public function testUsersModelFallsBackWhenNotMaxUserSubclass(): void
@@ -197,16 +217,16 @@ final class ConfigTest extends TestCase
 
     public function testChatsModelReturnsCustomSubclass(): void
     {
-        $this->app['config']->set(MaxServiceProvider::CONFIG_KEY . '.chats.model', CustomBotChat::class);
+        $this->app['config']->set(MaxServiceProvider::CONFIG_KEY . '.chats.model', CustomMaxChat::class);
 
-        $this->assertSame(CustomBotChat::class, $this->config()->chatsModel());
+        $this->assertSame(CustomMaxChat::class, $this->config()->chatsModel());
     }
 
-    public function testChatsModelFallsBackWhenNotBotChatSubclass(): void
+    public function testChatsModelFallsBackWhenNotChatSubclass(): void
     {
         $this->app['config']->set(MaxServiceProvider::CONFIG_KEY . '.chats.model', \stdClass::class);
 
-        $this->assertSame(BotChat::class, $this->config()->chatsModel());
+        $this->assertSame(MaxChat::class, $this->config()->chatsModel());
     }
 
     private function config(): Config

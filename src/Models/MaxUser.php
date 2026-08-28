@@ -18,6 +18,9 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @property string|null $description
  * @property string|null $avatar_url
  * @property string|null $full_avatar_url
+ * @property string|null $phone
+ * @property string|null $email
+ * @property \Illuminate\Support\Carbon|null $profile_checked_at
  */
 class MaxUser extends Model
 {
@@ -40,6 +43,9 @@ class MaxUser extends Model
         'description',
         'avatar_url',
         'full_avatar_url',
+        'phone',
+        'email',
+        'profile_checked_at',
     ];
 
     protected function casts(): array
@@ -48,14 +54,15 @@ class MaxUser extends Model
             'user_id' => 'integer',
             'is_bot' => 'boolean',
             'last_activity_time' => 'integer',
+            'profile_checked_at' => 'datetime',
         ];
     }
 
     /**
-     * @return HasMany<BotChat, $this>
+     * @return HasMany<MaxChat, $this>
      */
-    public function botChats(): HasMany
+    public function maxChats(): HasMany
     {
-        return $this->hasMany(BotChat::class, 'user_id', 'user_id');
+        return $this->hasMany(MaxChat::class, 'user_id', 'user_id');
     }
 }
