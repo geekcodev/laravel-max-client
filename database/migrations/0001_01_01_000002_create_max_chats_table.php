@@ -13,7 +13,8 @@ return new class () extends Migration {
             $table->id();
             $table->unsignedBigInteger('user_id')->comment('Идентификатор пользователя MAX');
             $table->unsignedBigInteger('chat_id')->comment('Идентификатор чата в MAX');
-            $table->string('status', 16)->default('active')->comment('Статус чата: active/stopped/removed');
+            $table->string('status', 16)->default('active')->comment('Статус чата');
+            $table->string('chat_type', 16)->nullable()->comment('Тип чата');
             $table->timestamp('last_activity_at')->nullable()->comment('Время последней активности в чате');
             $table->timestamps();
 

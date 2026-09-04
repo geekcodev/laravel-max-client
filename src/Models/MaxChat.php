@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace GeekCo\LaravelMaxClient\Models;
 
 use GeekCo\LaravelMaxClient\Enums\MaxChatStatus;
+use GeekCo\MaxPhpClient\Enum\ChatType;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
@@ -16,6 +17,7 @@ class MaxChat extends Model
         'user_id',
         'chat_id',
         'status',
+        'chat_type',
         'last_activity_at',
     ];
 
@@ -25,6 +27,7 @@ class MaxChat extends Model
             'user_id' => 'integer',
             'chat_id' => 'integer',
             'status' => MaxChatStatus::class,
+            'chat_type' => ChatType::class,
             'last_activity_at' => 'datetime',
         ];
     }
