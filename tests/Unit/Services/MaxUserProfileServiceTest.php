@@ -12,6 +12,7 @@ use GeekCo\LaravelMaxClient\Services\MaxUserProfileService;
 use GeekCo\LaravelMaxClient\Tests\Support\MockHttpClient;
 use GeekCo\LaravelMaxClient\Tests\TestCase;
 use GeekCo\MaxPhpClient\Dto\ChatMember;
+use GeekCo\MaxPhpClient\Enum\ChatType;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Psr\Http\Client\ClientInterface;
 
@@ -61,6 +62,7 @@ final class MaxUserProfileServiceTest extends TestCase
             'user_id' => 111,
             'chat_id' => 222,
             'status' => MaxChatStatus::Active,
+            'chat_type' => ChatType::Chat,
         ]);
         $this->http->queue($this->chatMemberResponse(111));
 
@@ -80,8 +82,8 @@ final class MaxUserProfileServiceTest extends TestCase
 
     public function testRefreshGathersUserIdsFromMultipleChats(): void
     {
-        MaxChat::create(['user_id' => 111, 'chat_id' => 222, 'status' => MaxChatStatus::Active]);
-        MaxChat::create(['user_id' => 222, 'chat_id' => 333, 'status' => MaxChatStatus::Active]);
+        MaxChat::create(['user_id' => 111, 'chat_id' => 222, 'status' => MaxChatStatus::Active, 'chat_type' => ChatType::Chat]);
+        MaxChat::create(['user_id' => 222, 'chat_id' => 333, 'status' => MaxChatStatus::Active, 'chat_type' => ChatType::Chat]);
         $this->http->queue($this->chatMemberResponse(111));
         $this->http->queue($this->chatMemberResponse(222));
 
@@ -98,7 +100,7 @@ final class MaxUserProfileServiceTest extends TestCase
     public function testRefreshBatchesUserIdsByProfileBatchSize(): void
     {
         for ($id = 1; $id <= 120; ++$id) {
-            MaxChat::create(['user_id' => $id, 'chat_id' => 222, 'status' => MaxChatStatus::Active]);
+            MaxChat::create(['user_id' => $id, 'chat_id' => 222, 'status' => MaxChatStatus::Active, 'chat_type' => ChatType::Chat]);
         }
         $this->http->queue($this->emptyChatMembersResponse());
         $this->http->queue($this->emptyChatMembersResponse());
@@ -121,7 +123,7 @@ final class MaxUserProfileServiceTest extends TestCase
     public function testRefreshSkipsWhenProfileFromActiveChatsDisabled(): void
     {
         $this->app['config']->set(MaxServiceProvider::CONFIG_KEY . '.users.profile_from_active_chats', false);
-        MaxChat::create(['user_id' => 111, 'chat_id' => 222, 'status' => MaxChatStatus::Active]);
+        MaxChat::create(['user_id' => 111, 'chat_id' => 222, 'status' => MaxChatStatus::Active, 'chat_type' => ChatType::Chat]);
 
         $this->assertFalse($this->service->refresh(111));
         $this->assertSame(0, $this->http->callCount);
@@ -241,7 +243,7 @@ final class MaxUserProfileServiceTest extends TestCase
             'full_avatar_url' => 'https://avatars.example/old.jpg',
             'profile_checked_at' => now()->subSeconds(7200),
         ]);
-        MaxChat::create(['user_id' => 111, 'chat_id' => 222, 'status' => MaxChatStatus::Active]);
+        MaxChat::create(['user_id' => 111, 'chat_id' => 222, 'status' => MaxChatStatus::Active, 'chat_type' => ChatType::Chat]);
         $this->http->queue($this->chatMemberResponse(111));
 
         $this->assertTrue($this->service->ensureAvatar(MaxUser::findOrFail(111)));
@@ -262,7 +264,7 @@ final class MaxUserProfileServiceTest extends TestCase
             'avatar_url' => 'https://avatars.example/111_s.jpg',
             'full_avatar_url' => 'https://avatars.example/111.jpg',
         ]);
-        MaxChat::create(['user_id' => 111, 'chat_id' => 222, 'status' => MaxChatStatus::Active]);
+        MaxChat::create(['user_id' => 111, 'chat_id' => 222, 'status' => MaxChatStatus::Active, 'chat_type' => ChatType::Chat]);
         $this->http->queue($this->chatMemberResponse(111));
 
         $this->assertTrue($this->service->ensureAvatar(MaxUser::findOrFail(111)));
@@ -276,7 +278,7 @@ final class MaxUserProfileServiceTest extends TestCase
             'first_name' => 'Иван',
             'is_bot' => false,
         ]);
-        MaxChat::create(['user_id' => 111, 'chat_id' => 222, 'status' => MaxChatStatus::Active]);
+        MaxChat::create(['user_id' => 111, 'chat_id' => 222, 'status' => MaxChatStatus::Active, 'chat_type' => ChatType::Chat]);
         $this->http->queue($this->chatMemberResponse(111));
 
         $this->assertTrue($this->service->ensureAvatar(MaxUser::findOrFail(111)));
@@ -294,10 +296,83 @@ final class MaxUserProfileServiceTest extends TestCase
             'first_name' => 'Иван',
             'is_bot' => false,
         ]);
+        $this->http->queue($this->chatResponse(222, 'chat'));
         $this->http->queue($this->chatMemberResponse(111));
 
         $this->assertTrue($this->service->ensureAvatar(MaxUser::findOrFail(111), chatId: 222));
         $this->assertStringContainsString('/chats/222/members', $this->http->lastRequest->getUri()->getPath());
         $this->assertSame('https://avatars.example/111_s.jpg', MaxUser::findOrFail(111)->fresh()->avatar_url);
+    }
+
+    public function testRefreshWithActiveDialogChatUsesDialogWithUser(): void
+    {
+        MaxChat::create([
+            'user_id' => 111,
+            'chat_id' => 222,
+            'status' => MaxChatStatus::Active,
+            'chat_type' => ChatType::Dialog,
+        ]);
+        $this->http->queue($this->chatResponse(222, 'dialog'));
+
+        $this->assertTrue($this->service->refresh(111));
+        $this->assertSame(1, $this->http->callCount);
+        $this->assertStringContainsString('/chats/222', $this->http->lastRequest->getUri()->getPath());
+        $this->assertStringNotContainsString('/members', $this->http->lastRequest->getUri()->getPath());
+
+        $user = MaxUser::query()->sole();
+        $this->assertSame(111, $user->user_id);
+        $this->assertSame('https://avatars.example/111_s.jpg', $user->avatar_url);
+        $this->assertSame('https://avatars.example/111.jpg', $user->full_avatar_url);
+    }
+
+    public function testRefreshDialogChatResolvesAndPersistsChatType(): void
+    {
+        MaxChat::create(['user_id' => 111, 'chat_id' => 222, 'status' => MaxChatStatus::Active]);
+        $this->http->queue($this->chatResponse(222, 'dialog'));
+
+        $this->assertTrue($this->service->refresh(111));
+        $this->assertSame(1, $this->http->callCount);
+        $this->assertSame(ChatType::Dialog, MaxChat::query()->where('chat_id', 222)->sole()->chat_type);
+    }
+
+    public function testEnsureAvatarWithExplicitDialogChatIdUsesDialogWithUser(): void
+    {
+        $this->app['config']->set(MaxServiceProvider::CONFIG_KEY . '.users.profile_from_active_chats', false);
+        MaxUser::create([
+            'user_id' => 111,
+            'first_name' => 'Иван',
+            'is_bot' => false,
+        ]);
+        $this->http->queue($this->chatResponse(222, 'dialog'));
+
+        $this->assertTrue($this->service->ensureAvatar(MaxUser::findOrFail(111), chatId: 222));
+        $this->assertSame(1, $this->http->callCount);
+        $this->assertStringContainsString('/chats/222', $this->http->lastRequest->getUri()->getPath());
+        $this->assertStringNotContainsString('/members', $this->http->lastRequest->getUri()->getPath());
+        $this->assertSame('https://avatars.example/111_s.jpg', MaxUser::findOrFail(111)->fresh()->avatar_url);
+    }
+
+    public function testFetchForDialogSkipsUpsertWhenPartnerNotRequested(): void
+    {
+        $this->app['config']->set(MaxServiceProvider::CONFIG_KEY . '.users.profile_from_active_chats', false);
+        MaxUser::create([
+            'user_id' => 111,
+            'first_name' => 'Иван',
+            'is_bot' => false,
+        ]);
+        $this->http->queue($this->chatResponse(222, 'dialog', [
+            'dialog_with_user' => [
+                'user_id' => 333,
+                'first_name' => 'Чужой',
+                'last_name' => null,
+                'username' => null,
+                'is_bot' => false,
+            ],
+        ]));
+
+        $this->assertFalse($this->service->ensureAvatar(MaxUser::findOrFail(111), chatId: 222));
+        $this->assertSame(1, $this->http->callCount);
+        $this->assertSame(0, MaxUser::query()->where('user_id', 333)->count());
+        $this->assertSame(111, MaxUser::query()->sole()->user_id);
     }
 }

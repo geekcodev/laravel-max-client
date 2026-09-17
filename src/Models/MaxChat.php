@@ -9,6 +9,13 @@ use GeekCo\MaxPhpClient\Enum\ChatType;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
+/**
+ * @property int $user_id
+ * @property int $chat_id
+ * @property MaxChatStatus $status
+ * @property ChatType|null $chat_type
+ * @property \Illuminate\Support\Carbon|null $last_activity_at
+ */
 class MaxChat extends Model
 {
     protected $table = 'max_chats';
