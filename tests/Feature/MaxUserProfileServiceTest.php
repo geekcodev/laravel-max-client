@@ -10,6 +10,7 @@ use GeekCo\LaravelMaxClient\Models\MaxUser;
 use GeekCo\LaravelMaxClient\Services\MaxUserProfileService;
 use GeekCo\LaravelMaxClient\Tests\Support\MockHttpClient;
 use GeekCo\LaravelMaxClient\Tests\TestCase;
+use GeekCo\MaxPhpClient\Enum\ChatType;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Psr\Http\Client\ClientInterface;
 
@@ -28,6 +29,7 @@ final class MaxUserProfileServiceTest extends TestCase
             'user_id' => 111,
             'chat_id' => 222,
             'status' => MaxChatStatus::Active,
+            'chat_type' => ChatType::Chat,
         ]);
 
         $http = new MockHttpClient([$this->chatMemberResponse(111)]);
