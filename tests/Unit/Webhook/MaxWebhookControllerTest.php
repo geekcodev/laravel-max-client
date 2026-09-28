@@ -11,6 +11,7 @@ use GeekCo\LaravelMaxClient\Webhook\MaxUpdateReceived;
 use GeekCo\LaravelMaxClient\Webhook\MaxWebhookController;
 use Illuminate\Contracts\Events\Dispatcher;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Queue;
 use Orchestra\Testbench\Attributes\DefineEnvironment;
 
@@ -79,6 +80,23 @@ final class MaxWebhookControllerTest extends TestCase
 
         $response->assertStatus(400);
         Queue::assertPushed(HandleMaxUpdateJob::class, 0);
+    }
+
+    public function testLogsExceptionMessageWhenPayloadIsRejected(): void
+    {
+        Queue::fake();
+        $this->listenToUpdates();
+        Log::spy();
+
+        $this->postJson('/max/webhook', ['timestamp' => 1700000000000], [self::SECRET_HEADER => 'test-secret'])
+            ->assertStatus(400);
+
+        Log::shouldHaveReceived('warning')
+            ->once()
+            ->withArgs(static function (string $message, array $context): bool {
+                return $message === 'MAX webhook: invalid payload rejected.'
+                    && str_contains((string) ($context['message'] ?? ''), 'update_type');
+            });
     }
 
     public function testResponds401ForInvalidSecret(): void

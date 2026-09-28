@@ -11,7 +11,7 @@
 
 - PHP ^8.4
 - Laravel ^12.0|^13.0
-- `geekcodev/max-php-client` ^1.0.6
+- `geekcodev/max-php-client` ^1.1.6 (Comments API, `getUpdatesBatch`, `UploadedInfo`)
 
 ## Установка
 
@@ -36,35 +36,35 @@ MAX_API_TOKEN=your-bot-access-token
 
 Все доступные переменные (имена см. в `.env.example`):
 
-| Переменная                                 | По умолчанию                             | Описание                                                               |
-|--------------------------------------------|------------------------------------------|------------------------------------------------------------------------|
-| `MAX_API_TOKEN`                            | —                                        | Токен бота (заголовок `Authorization`)                                 |
-| `MAX_BASE_URI`                             | `https://platform-api2.max.ru`           | Базовый URI API (домен `platform-api2`)                                |
-| `MAX_WEBHOOK_ENABLED`                      | `false`                                  | Регистрировать вебхук-роут                                             |
-| `MAX_WEBHOOK_SECRET`                       | —                                        | Секрет вебхука (без него роут не включается)                           |
-| `MAX_WEBHOOK_QUEUE`                        | `default`                                | Очередь для джобов обработки Update                                    |
-| `MAX_WEBHOOK_PATH`                         | `/max/webhook`                           | Путь вебхук-роута                                                      |
-| `MAX_RETRY_*`                              | 3 / 1 / 30 / 2 / false                   | Ретраи (попытки/базовая/макс. задержка/фактор/не-идемпотентные)        |
-| `MAX_RATE_LIMIT_*`                         | 2.0 / 2.0                                | Token bucket на диалог/чат/канал: токенов в секунду / максимум         |
-| `MAX_GLOBAL_RATE_LIMIT_*`                  | 30.0 / 30.0                              | Глобальный token bucket на весь API (ожидание, не ошибка)              |
-| `MAX_WEBAPP_MAX_AGE`                       | `86400`                                  | Срок жизни `auth_date` мини-приложения, сек (0 — не проверять)         |
-| `MAX_WEBAPP_STRICT`                        | `false`                                  | `max.webapp` возвращает 403 без валидного WebAppData                   |
-| `MAX_WEBAPP_SESSION_USER_ID`               | `user_id`                                | Ключ сессии для user_id (middleware `max.webapp`)                      |
-| `MAX_WEBAPP_SESSION_CHAT_ID`               | `chat_id`                                | Ключ сессии для chat_id (middleware `max.webapp`)                      |
-| `MAX_WEBAPP_CSP_ENABLED`                   | `true`                                   | Добавлять `frame-ancestors` в CSP (middleware `max.csp`)               |
-| `MAX_WEBAPP_FRAME_ANCESTORS`               | `https://max.ru,https://web.max.ru`      | Хосты, которым разрешено встраивать мини-приложение (через запятую)    |
-| `MAX_CHATS_ENABLED`                        | `false`                                  | Включает реестр чатов `max_chats` (слушатель `PersistMaxChatListener`) |
-| `MAX_CHATS_MODEL`                          | `GeekCo\LaravelMaxClient\Models\MaxChat` | Модель реестра чатов (для переопределения)                             |
-| `MAX_USERS_MODEL`                          | `GeekCo\LaravelMaxClient\Models\MaxUser` | Модель реестра пользователей (для переопределения)                     |
-| `MAX_USERS_PROFILE_FROM_ACTIVE_CHATS`      | `true`                                   | `MaxUserProfileService`: резолвить chat_id из активных `max_chats`     |
-| `MAX_USERS_PROFILE_BATCH_SIZE`             | `50`                                     | Лимит userIds на один вызов `getChatMembers` (батчинг)                |
+| Переменная                                 | По умолчанию                             | Описание                                                                                 |
+|--------------------------------------------|------------------------------------------|------------------------------------------------------------------------------------------|
+| `MAX_API_TOKEN`                            | —                                        | Токен бота (заголовок `Authorization`)                                                   |
+| `MAX_BASE_URI`                             | `https://platform-api2.max.ru`           | Базовый URI API (домен `platform-api2`)                                                  |
+| `MAX_WEBHOOK_ENABLED`                      | `false`                                  | Регистрировать вебхук-роут                                                               |
+| `MAX_WEBHOOK_SECRET`                       | —                                        | Секрет вебхука (без него роут не включается)                                             |
+| `MAX_WEBHOOK_QUEUE`                        | `default`                                | Очередь для джобов обработки Update                                                      |
+| `MAX_WEBHOOK_PATH`                         | `/max/webhook`                           | Путь вебхук-роута                                                                        |
+| `MAX_RETRY_*`                              | 3 / 1 / 30 / 2 / false                   | Ретраи (попытки/базовая/макс. задержка/фактор/не-идемпотентные)                          |
+| `MAX_RATE_LIMIT_*`                         | 2.0 / 2.0                                | Token bucket на диалог/чат/канал: токенов в секунду / максимум                           |
+| `MAX_GLOBAL_RATE_LIMIT_*`                  | 30.0 / 30.0                              | Глобальный token bucket на весь API (ожидание, не ошибка)                                |
+| `MAX_WEBAPP_MAX_AGE`                       | `86400`                                  | Срок жизни `auth_date` мини-приложения, сек (0 — не проверять)                           |
+| `MAX_WEBAPP_STRICT`                        | `false`                                  | `max.webapp` возвращает 403 без валидного WebAppData                                     |
+| `MAX_WEBAPP_SESSION_USER_ID`               | `user_id`                                | Ключ сессии для user_id (middleware `max.webapp`)                                        |
+| `MAX_WEBAPP_SESSION_CHAT_ID`               | `chat_id`                                | Ключ сессии для chat_id (middleware `max.webapp`)                                        |
+| `MAX_WEBAPP_CSP_ENABLED`                   | `true`                                   | Добавлять `frame-ancestors` в CSP (middleware `max.csp`)                                 |
+| `MAX_WEBAPP_FRAME_ANCESTORS`               | `https://max.ru,https://web.max.ru`      | Хосты, которым разрешено встраивать мини-приложение (через запятую)                      |
+| `MAX_CHATS_ENABLED`                        | `false`                                  | Включает реестр чатов `max_chats` (слушатель `PersistMaxChatListener`)                   |
+| `MAX_CHATS_MODEL`                          | `GeekCo\LaravelMaxClient\Models\MaxChat` | Модель реестра чатов (для переопределения)                                               |
+| `MAX_USERS_MODEL`                          | `GeekCo\LaravelMaxClient\Models\MaxUser` | Модель реестра пользователей (для переопределения)                                       |
+| `MAX_USERS_PROFILE_FROM_ACTIVE_CHATS`      | `true`                                   | `MaxUserProfileService`: резолвить chat_id из активных `max_chats`                       |
+| `MAX_USERS_PROFILE_BATCH_SIZE`             | `50`                                     | Лимит userIds на один вызов `getChatMembers` (батчинг)                                   |
 | `MAX_USERS_PROFILE_CHECK_INTERVAL`         | `86400`                                  | Периодичность перепроверки профиля в `ensureAvatar`, сек (0 — только при пустом аватаре) |
-| `MAX_LOGGING_ENABLED`                      | `false`                                  | Включает логирование (middleware `max.log`)                            |
-| `MAX_LOGGING_CHANNEL`                      | `stack`                                  | Канал Laravel для логов                                                |
-| `MAX_LOGGING_FALLBACK_CHANNEL`             | `laravel-max-client`                     | Запасной канал, если основной не определён                             |
-| `MAX_LOGGING_LOG_REQUEST_BODY`             | `false`                                  | Логировать тело запроса (секреты маскируются)                          |
-| `MAX_LOGGING_LOG_RESPONSE_BODY`            | `false`                                  | Логировать тело ответа                                                 |
-| `MAX_LOGGING_LOG_RESPONSE_BODY_MAX_LENGTH` | `1000`                                   | Макс. длина не-JSON тела ответа в логе                                 |
+| `MAX_LOGGING_ENABLED`                      | `false`                                  | Включает логирование (middleware `max.log`)                                              |
+| `MAX_LOGGING_CHANNEL`                      | `stack`                                  | Канал Laravel для логов                                                                  |
+| `MAX_LOGGING_FALLBACK_CHANNEL`             | `laravel-max-client`                     | Запасной канал, если основной не определён                                               |
+| `MAX_LOGGING_LOG_REQUEST_BODY`             | `false`                                  | Логировать тело запроса (секреты маскируются)                                            |
+| `MAX_LOGGING_LOG_RESPONSE_BODY`            | `false`                                  | Логировать тело ответа                                                                   |
+| `MAX_LOGGING_LOG_RESPONSE_BODY_MAX_LENGTH` | `1000`                                   | Макс. длина не-JSON тела ответа в логе                                                   |
 
 > Токен и секрет никогда не должны попадать в код, логи или коммиты — только env.
 
@@ -240,14 +240,13 @@ $profile->ensureAvatar($user, chatId: 222);
 ```
 
 - `refresh()` группирует userIds по активным чатам в `max_chats` и батчит их по `users.profile_batch_size`
-  (`MAX_USERS_PROFILE_BATCH_SIZE`, по умолчанию 50) на вызов `getChatMembers`. Возвращает false, если активных
-  чатов нет или профили не обновились.
-- `users.profile_from_active_chats` (`MAX_USERS_PROFILE_FROM_ACTIVE_CHATS`, по умолчанию true) — искать chat_id
-  в реестре. При `false` `refresh()` пропускается, но явный `chatId` в `ensureAvatar()` работает всегда.
-- `ensureAvatar()` по умолчанию перепроверяет профиль раз в сутки
-  (`users.profile_check_interval`, `MAX_USERS_PROFILE_CHECK_INTERVAL`, по умолчанию `86400` = раз в сутки): пропуск,
-  только пока `profile_checked_at` свежее интервала. `0` — отключить периодичность (обновлять только при пустом
-  аватаре).
+  (`MAX_USERS_PROFILE_BATCH_SIZE`, по умолчанию 50) на вызов `getChatMembers`. Возвращает false, если активных чатов нет
+  или профили не обновились.
+- `users.profile_from_active_chats` (`MAX_USERS_PROFILE_FROM_ACTIVE_CHATS`, по умолчанию true) — искать chat_id в
+  реестре. При `false` `refresh()` пропускается, но явный `chatId` в `ensureAvatar()` работает всегда.
+- `ensureAvatar()` по умолчанию перепроверяет профиль раз в сутки (`users.profile_check_interval`,
+  `MAX_USERS_PROFILE_CHECK_INTERVAL`, по умолчанию `86400` = раз в сутки): пропуск, только пока `profile_checked_at`
+  свежее интервала. `0` — отключить периодичность (обновлять только при пустом аватаре).
 
 ## Подписки (webhook)
 
@@ -383,6 +382,27 @@ source .env && docker run --rm --network host \
   -e MAX_API_TOKEN="$MAX_API_TOKEN" \
   ghcr.io/geekcodev/php:8.4-bookworm vendor/bin/phpunit --group integration
 ```
+
+## История изменений
+
+Актуальную версию смотрите по тегу (`git tag --sort=-v:refname | head -1`) и
+в [GitHub Releases](https://github.com/geekcodev/laravel-max-client/releases); полные описания — в
+`.agents/release/RELEASE_NOTES_*.md`
+в рабочем окружении. Версия берётся из git-тегов, в `composer.json` поле `version` не указывается.
+
+| Версия | Дата       | Основное                                                                                                                             |
+|--------|------------|--------------------------------------------------------------------------------------------------------------------------------------|
+| v1.1.2 | 2026-09-17 | Профили в диалогах через `dialog_with_user` (`getChatMembers` для диалогов недоступен), резолв типа чата, кэш чатов, ядро `^1.1.0`   |
+| v1.1.1 | 2026-09-04 | Поле `chat_type` в `max_chats` (dialog/chat/channel) и его дозаполнение из lifecycle- и message/callback-апдейтов                    |
+| v1.1.0 | 2026-08-28 | `MaxUserProfileService` (аватар и профиль через `getChatMembers`), реестр чатов переименован в `MaxChat` / `max_chats`               |
+| v1.0.9 | 2026-08-19 | Реестр пользователей `max_users`, поле `last_activity_at`, переименование `bot_chats` → `max_bot_chats`                              |
+| v1.0.7 | 2026-08-15 | Ядро `^1.0.6`: глобальный rate limit 30 req/s (`global_rate_limit`), алиас middleware `max_bot.log` → `max.log`, доработка `max.csp` |
+| v1.0.6 | 2026-08-14 | Верификация WebAppData из строки (фрагмент URL `#WebAppData`) через `WebAppContext`                                                  |
+| v1.0.5 | 2026-08-13 | Настраиваемое логирование запросов и апдейтов (middleware `max.log`), синхронизация с ядром v1.0.3                                   |
+| v1.0.3 | 2026-08-12 | Поддержка мини-приложений, middleware `max.webapp`, реестр чатов, команды `max:subscribe` / `max:unsubscribe`                        |
+| v1.0.0 | 2026-08-08 | Первая версия адаптера: провайдер, publishable-конфиг, фасад, вебхук `POST /max/webhook` с очередью, Long Polling (`max:listen`)     |
+
+Промежуточные патч-версии (v1.0.1, v1.0.2, v1.0.4, v1.0.8) — см. GitHub Releases.
 
 ## Лицензия
 

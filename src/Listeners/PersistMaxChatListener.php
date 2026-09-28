@@ -16,9 +16,9 @@ use Illuminate\Support\Facades\Log;
  * Реестр чатов: upsert max_chats по апдейтам bot_added/bot_started/
  * bot_stopped/bot_removed (getChats deprecated — chat_id хранить через
  * подписку). При наличии user в апдейте — upsert в max_users.
- * chat_type определяется из Recipient->chatType (message/callback),
+ * chat_type определяется из Recipient->chatType (message/comment/callback),
  * isChannel (lifecycle), либо getChat() API (fallback для bot_added/bot_started).
- * Message/callback-апдейты статус не меняют и чат не создают — только
+ * Message/comment/callback-апдейты статус не меняют и чат не создают — только
  * дозаполняют chat_type у существующего чата, если он ещё не известен.
  * Включается config('laravel-max-client.chats.enabled').
  */
@@ -34,7 +34,7 @@ final class PersistMaxChatListener
     {
         $update = $event->update;
 
-        if ($update->message !== null || $update->callback !== null) {
+        if ($update->message !== null || $update->comment !== null || $update->callback !== null) {
             $this->fillChatTypeFromRecipient($update);
 
             return;
@@ -125,6 +125,7 @@ final class PersistMaxChatListener
     private function resolveChatType(\GeekCo\MaxPhpClient\Dto\Update $update): ?ChatType
     {
         $chatType = $update->message?->recipient->chatType
+            ?? $update->comment?->recipient->chatType
             ?? $update->callback?->message?->recipient->chatType;
 
         if (is_string($chatType)) {
