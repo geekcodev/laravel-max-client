@@ -490,6 +490,43 @@ final class PersistMaxChatListenerTest extends TestCase
         $this->assertNull($chat->chat_type);
     }
 
+    public function testCommentUpdateFillsExistingChatType(): void
+    {
+        MaxChat::create([
+            'user_id' => 111,
+            'chat_id' => 222,
+            'status' => MaxChatStatus::Active,
+        ]);
+
+        $this->dispatchComment('channel');
+
+        $chat = MaxChat::query()->sole();
+
+        $this->assertSame(MaxChatStatus::Active, $chat->status);
+        $this->assertSame(ChatType::Channel, $chat->chat_type);
+    }
+
+    public function testCommentUpdateDoesNotCreateChat(): void
+    {
+        $this->dispatchComment('channel');
+
+        $this->assertSame(0, MaxChat::query()->count());
+    }
+
+    public function testCommentUpdateDoesNotOverwriteExistingChatType(): void
+    {
+        MaxChat::create([
+            'user_id' => 111,
+            'chat_id' => 222,
+            'status' => MaxChatStatus::Active,
+            'chat_type' => ChatType::Chat,
+        ]);
+
+        $this->dispatchComment('channel');
+
+        $this->assertSame(ChatType::Chat, MaxChat::query()->sole()->chat_type);
+    }
+
     private function queueGetChatResponse(string $chatType): void
     {
         $this->httpClient->queue(new \GuzzleHttp\Psr7\Response(200, [], json_encode([
@@ -586,6 +623,23 @@ final class PersistMaxChatListenerTest extends TestCase
             ),
             chatId: 222,
         );
+
+        $this->app->make(Dispatcher::class)->dispatch(new MaxUpdateReceived($update));
+    }
+
+    private function dispatchComment(?string $chatType): void
+    {
+        $update = Update::fromArray([
+            'update_type' => UpdateType::CommentCreated->value,
+            'timestamp' => 1000,
+            'is_channel' => true,
+            'message' => [
+                'sender' => ['user_id' => 111, 'first_name' => 'Иван', 'is_bot' => false, 'last_activity_time' => 1000],
+                'recipient' => ['chat_id' => 222, 'chat_type' => $chatType, 'post_id' => 'mid_post'],
+                'timestamp' => 1000,
+                'body' => ['mid' => 'c1', 'seq' => 2, 'text' => 'Хороший пост'],
+            ],
+        ]);
 
         $this->app->make(Dispatcher::class)->dispatch(new MaxUpdateReceived($update));
     }

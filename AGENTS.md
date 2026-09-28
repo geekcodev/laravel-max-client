@@ -4,20 +4,30 @@
 > Читай этот файл **целиком** в начале работы — он задаёт архитектуру, обязательный процесс проверок
 > (Gate) и требования SOLID / DRY / KISS / OWASP Top 10.
 > Пользовательскую документацию (установка, быстрый старт, интеграция) — в `README.md`.
+> Справочник контрактов **API MAX** (спека, эндпоинты, enums, DTO, лимиты, вебхуки) находится в ядре —
+> `max-php-client/docs/api-reference.md`; читай его перед правками DTO, enum, транспорта, вебхуков и вызовов API.
+> Здесь перечислены только факты, влияющие на адаптер.
 
 ## 1. О проекте
 
 - **Что это.** Laravel-пакет **`geekcodev/laravel-max-client`** — тонкий фреймворк-адаптер поверх framework-agnostic
   ядра **`geekcodev/max-php-client`** (клиент для **MAX Messenger Bot API**,
   https://max.ru). Репозиторий/рабочая папка — `laravel-max-client`.
-- **Ядро.** `geekcodev/max-php-client` v1.0.0+ (namespace `GeekCo\MaxPhpClient`): PSR-7/17/18 транспорт, ретраи, rate
-  limit, загрузка медиа, webhook-хендлер, верификация контакта и данных мини-приложения. Источник истины по API —
-  `https://github.com/geekcodev/max-openapi` (OpenAPI 3.1).
+- **Статус.** Последний выпущенный релиз адаптера — **v1.1.2** (тег `v1.1.2`, GitHub Release, Packagist
+  `geekcodev/laravel-max-client`). Актуальную версию всегда уточняй по `git tag --sort=-v:refname | head -1` и
+  `git log --oneline -10`, а не по этому файлу. Незакоммиченная работа лежит в `dev`.
+- **Ядро.** `geekcodev/max-php-client` (namespace `GeekCo\MaxPhpClient`) — последний тег на момент последней
+  синхронизации **v1.1.6**, constraint в `composer.json` — `^1.1.6`. Ядро даёт PSR-7/17/18 транспорт, ретраи, rate
+  limit, загрузку медиа, webhook-хендлер, верификацию контакта и данных мини-приложения. **Фактические версии проверяй
+  динамически**: `composer show geekcodev/max-php-client` и `git -C ../max-php-client tag --sort=-v:refname |
+  head -1` — не по этому файлу. Исправления ядра (CRLF/base64/`vcf_info` в верификации контакта, строковый
+  `message.link.sender`, комментарии и разметка) адаптер наследует автоматически вместе с обновлением зависимости.
+  Источник истины по API — `docs/api-reference.md` ядра и https://github.com/geekcodev/max-openapi (OpenAPI 3.1).
 - **Принцип.** Пакет — **тонкий адаптер**: всю бизнес-логику API (DTO, эндпоинты, ретраи, rate limit, безопасность)
   отдаёт ядру. Здесь живёт только Laravel-клей: ServiceProvider, конфиг, фасад, вебхук-роутинг, очередь. **Не форкать и
   не переписывать ядро**, не дублировать его методы.
 - **Лицензия.** MIT (c) 2026 Evgeny Semenov (совпадает с ядром, файл `LICENSE`).
-- **Язык.** Рабочий язык общения с пользователем — **русский**.
+- **Язык.** Рабочий язык общения, все md-файлы и журнал — **русский**.
 
 ## 2. Ветки и состояние git
 
@@ -27,18 +37,36 @@
 - `version` в `composer.json` **не указывается** — версия берётся из git-тегов.
 - `.env` — untracked (в `.gitignore`): `MAX_API_TOKEN`, `MAX_WEBHOOK_SECRET`. **Никогда не коммитить и не логировать
   значения.** Коммиты и push делает пользователь (в окружении нет credential.helper/gh) — без явного запроса не коммить.
+- **Различай «текст коммита» и «коммит».** Если пользователь просит «напиши текст/сообщение коммита» — верни краткий
+  HEAD (одна строка subject) на английском языке по [Conventional Commits](https://www.conventionalcommits.org/):
+  `тип` (`feat`, `fix`, `refactor`, `style`, `docs`, `test`, `chore`, `ci`, ...) + `scope` + краткое описание, без тела,
+  **без** выполнения `git commit`. Если просит «закоммить» / «сделай коммит» — тогда выполняй реальный `git commit` с
+  таким коротким сообщением. Никогда не коммить по умолчанию и не делай `git add .` без проверки `git status` и
+  `git diff`.
+- Перед завершением релиза проверь, что в рабочем дереве нет мусора: `git status --short` должен содержать только
+  ожидаемые записи. Каталог `.agents/` в `.gitignore` — это ожидаемо, а не мусор.
 
 ## 3. Правила для ИИ-агентов
 
 1. В начале работы прочитай `AGENTS.md` и `README.md`; при задачах на обновление под новую версию ядра/`max-openapi`
-   также читай протокол обновления `.ai/upgrade/UPGRADE_PLAN.md`.
+   также читай протокол обновления `.agents/upgrade/UPGRADE_PLAN.md` и `docs/api-reference.md` ядра.
 2. **Не коммить и не пушить без явного запроса пользователя.**
 3. Перед завершением любой задачи, менявшей код, прогони обязательный Gate (раздел 7) целиком. Результаты не подменяй;
    недоступный шаг честно указывай в отчёте, а не пропускай молча.
-4. Не выдумывай сигнатуры и эндпоинты: сверяйся с ядром (`GeekCo\MaxPhpClient\ApiClient`) и спецификацией
-   `max-openapi`. Новые методы адаптера — только обёртки над ядром.
+4. Не выдумывай сигнатуры и эндпоинты: сверяйся с ядром (`GeekCo\MaxPhpClient\ApiClient`), `docs/api-reference.md` ядра
+   и спецификацией `max-openapi`. Прод-поведение важнее спеки в случаях, перечисленных в `docs/api-reference.md` ядра
+   (раздел 9). Новые методы адаптера — только обёртки над ядром.
 5. Если для задачи чего-то не хватает (токен, сеть, контейнер) — скажи об этом, а не упрощай задачу молча.
 6. Ответы — краткие и по делу; в коде — без лишних комментариев.
+7. **Расхождение или пробел, найденные в интеграционном Laravel-приложении, — регрессия этого пакета.** Зафиксируй его
+   здесь как отдельную задачу (тест + фикс + релиз), а не как обход в стороннем проекте. Найденные интеграторами
+   расхождения ядра: v1.1.1 — CRLF, v1.1.2 — base64, v1.1.3 — raw `vcf_info`; схема — `docs/api-reference.md` ядра,
+   раздел 9.
+8. **Веди `.agents`** (раздел 4.1): после каждой содержательной сессии обнови `journals/JOURNAL.md` и добавь файл
+   сессии; многошаговые задачи фиксируй в `plans/`; правки релиза — в `release/`.
+9. **Язык — русский.** Все md-файлы, комментарии в коде, описания, планы и журнал пиши по-русски, информативно, без
+   смешения языков и без декоративных артефактов (значков, условных обозначений, символов непонятного происхождения).
+   Допустимы только русский и английский. Идентификаторы в коде, имена API-полей и термины спеки остаются как есть.
 
 ## 4. Структура репозитория (целевая)
 
@@ -86,7 +114,34 @@ phpstan.neon                       level max
 scripts/check-coverage.php         порог покрытия строк (по умолчанию 95%)
 ```
 
-`composer.lock`, `.phpunit.cache/`, `build/`, `vendor/` — в `.gitignore`.
+`composer.lock`, `.phpunit.cache/`, `build/`, `vendor/`, `.agents/` — в `.gitignore` (для библиотеки lock не коммитится;
+`.agents/` — локальная рабочая память, наружу не отдаётся).
+
+### 4.1 Рабочие каталоги `.agents` и документация
+
+`.agents/` — **локальный** каталог (в `.gitignore`): журнал сессий, планы, протокол обновления ядра и описания релизов.
+Он не попадает в репозиторий и в дистрибутив Packagist, поэтому туда не кладут то, что должно быть публичным: для
+внешних потребителей истина — `README.md`, `docs/api-reference.md` ядра и описания в GitHub Release.
+
+| Каталог               | Содержимое                                                                                     |
+|-----------------------|------------------------------------------------------------------------------------------------|
+| `journals/JOURNAL.md` | Карта сессий: дата · файл · теги · краткое описание                                            |
+| `journals/sessions/`  | Файлы сессий `YYYY-MM-DD-тема.md`: frontmatter с тегами, тело ≤5 КБ                            |
+| `plans/`              | Планы многошаговых задач `YYYY-MM-DD-тема.md`, статус: `в работе` или `завершён`; не удаляются |
+| `release/`            | `RELEASE_NOTES_vX.Y.Z.md` — описание каждой версии                                             |
+| `upgrade/`            | `UPGRADE_PLAN.md` — протокол обновления адаптера под новые версии ядра                         |
+
+**Правила ведения**
+
+- **Файл сессии** — компактный отчёт: frontmatter (`tags`, `date`), затем секции `Проблема` / `Решение` / `Тесты` /
+  `Нюансы` / `Gate`. Обязательная строка о Gate: что именно прогналось и с каким результатом. Секреты, токены,
+  `vcf_info`, payload колбэков и прод-ответы в журнал не пишутся.
+- **`JOURNAL.md`** — одна строка на сессию, самые новые сверху; формат строки: `дата · файл · теги · описание`.
+- **План** — для задач из трёх и более шагов или требующих исследования (например, синхронизация со спекой): цель,
+  исследование, реализация, тесты, нюансы, статус. Готовый план не удаляется, а помечается завершённым.
+- **Release notes** — пишутся в `.agents/release/RELEASE_NOTES_vX.Y.Z.md` при выпуске версии; значимые пункты
+  дублируются в README (раздел «История изменений») и в GitHub Release.
+- Если правка изменила поведение публичного API или контракт с интеграторами — обнови `README.md` в той же сессии.
 
 ## 5. Архитектура и ключевые контракты
 
@@ -116,7 +171,8 @@ scripts/check-coverage.php         порог покрытия строк (по 
     - `RetryStrategy`, `RateLimiter` (per-chat и глобальный) — из конфига (`retry.*`, `rate_limit.*`,
       `global_rate_limit.*`), при пустых значениях — дефолты ядра.
 - **Facade `Max`**: резолвит `ApiClient` из контейнера, PHPDoc `@method` покрывает всё API ядра (синхронизировать с
-  `ApiClient` при обновлении ядра). Пример:
+  `ApiClient` при обновлении ядра; расхождение ловит
+  `MaxFacadeTest::testFacadeDocumentsEveryPublicApiClientMethodWithItsReturnType`). Пример:
   ```php
   use GeekCo\LaravelMaxClient\Facades\Max;
 
@@ -177,7 +233,8 @@ scripts/check-coverage.php         порог покрытия строк (по 
 - **Реестр чатов** (`max_chats`): реализация документированной практики MAX (getChats deprecated — chat_id хранить через
   `bot_added`/`bot_started`). Publishable-миграция, модель `Models\MaxChat` (переопределяемая `chats.model`,
   `MAX_CHATS_MODEL`), enum `Enums\MaxChatStatus`, слушатель `Listeners\PersistMaxChatListener` (upsert по
-  `bot_added`/`bot_started`/`bot_stopped`/`bot_removed`, пропуск при `chat_id=null`). Включается `chats.enabled`
+  `bot_added`/`bot_started`/`bot_stopped`/`bot_removed`, пропуск при `chat_id=null`; апдейты с `message`/`comment`/
+  `callback` статус не меняют, но дозаполняют `chat_type` из `Recipient::chatType`). Включается `chats.enabled`
   (`MAX_CHATS_ENABLED`); регистрация слушателя на `MaxUpdateReceived` — в `MaxServiceProvider::boot()`. Это
   инфраструктура — бизнес-обработка остаётся в приложении.
 - **Профиль пользователя** (`Services\MaxUserProfileService`): наполнение `max_users` полноценным профилем (аватар
@@ -187,8 +244,8 @@ scripts/check-coverage.php         порог покрытия строк (по 
   `users.profile_from_active_chats` отключает резолв из реестра), `upsertFromMember(ChatMember): MaxUser`
   (`updateOrCreate`, пишет `profile_checked_at`), `ensureAvatar(MaxUser, ?int $chatId = null): bool` (пропуск при уже
   заполненном аватаре; при `users.profile_check_interval` > 0 — периодическая перепроверка по `profile_checked_at` в
-  секундах (по умолчанию 86400 — раз в сутки); явный `chatId` работает без реестра). «Когда вызывать» —
-  ответственность приложения.
+  секундах (по умолчанию 86400 — раз в сутки); явный `chatId` работает без реестра). «Когда вызывать» — ответственность
+  приложения.
 - **Подписки** (`MaxSubscribeCommand`, `MaxUnsubscribeCommand`): `php artisan max:subscribe <url>` /
   `max:unsubscribe <url>`. URL — только HTTPS; при заданном `config('laravel-max-client.webhook.allowed_hosts')` хост
   сверяется до создания подписки (A10). Подписка — на рекомендованный набор апдейтов (`UpdateType::*`), секрет из
@@ -201,22 +258,32 @@ scripts/check-coverage.php         порог покрытия строк (по 
 
 ### Соглашения
 
+| Принцип              | Применение к этому пакету                                                                                                           |
+|----------------------|-------------------------------------------------------------------------------------------------------------------------------------|
+| **SOLID**            | Один класс — одна ответственность; композиция через контейнер Laravel и сервис-контракты ядра                                       |
+| **DRY**              | Не дублировать методы ядра — только делегирование; API-факты берутся из `docs/api-reference.md` ядра, а не копируются               |
+| **KISS**             | Никаких собственных DI-контейнеров и магических абстракций; фасад и middleware как точки входа                                      |
+| **TDD**              | Новый компонент сначала покрывается unit-тестом; HTTP-слой — через `tests/Support/MockHttpClient` (PSR-18) или подмену в контейнере |
+| **BC-совместимость** | Публичный API пакета: в patch-релизе не удалять и не менять сигнатуры; новое — через необязательные параметры и конфиг с дефолтом   |
+| **Production-grade** | Gate (раздел 7), покрытие ≥95%, fail-closed на секретах, никаких глобальных состояний                                               |
+
 - PHP **8.4**, `declare(strict_types=1)` во всех файлах, PSR-12, PHPStan **level max**.
 - Namespace `GeekCo\LaravelMaxClient` (тесты `GeekCo\LaravelMaxClient\Tests`), PSR-4.
-- SOLID / DRY / KISS: единая ответственность, открытость к расширению, без избыточной абстракции. Никакого дублирования
-  методов ядра — только делегирование.
 - Не добавлять комментарии без необходимости.
 - Тесты обязательны для нового кода: unit на компоненты пакета; HTTP-слой — через `tests/Support/MockHttpClient`
   (PSR-18) или подмену `ClientInterface` в контейнере Testbench. Интеграционные — read-only, группа `integration`, без
   токена `markTestSkipped` (не падать).
-- `composer.json` constraints на момент разработки: `php ^8.4`, `geekcodev/max-php-client ^1.0.6` (WebAppDataValidator
-  появился в v1.0.1 ядра; `Update::$user` nullable и фолбэки `user`/`chat_id` — с v1.0.3; `ApiClient::create()` с
-  `global_rate_limiter`, deprecated-права админов и пустое тело `sendAnswer` — с v1.0.6 — версия ниже не резолвит
-  актуальные сигнатуры),
-  `laravel/framework ^12.0|^13.0`, `guzzlehttp/guzzle ^7.15` (обязателен как PSR-18 по умолчанию),
-  `illuminate/support`/`illuminate/queue`/`illuminate/routing` — через `laravel/framework`; dev — Testbench под
-  поддерживаемую версию Laravel, phpunit ^11.5, phpstan ^2.0, friendsofphp/php-cs-fixer ^3.0. Точные версии Testbench
-  сверить с совместимостью Laravel на момент реализации.
+- `composer.json` constraints на момент разработки: `php ^8.4`, `geekcodev/max-php-client ^1.1.6` (комментарии и
+  разметка в ответах, 19 типов обновлений, DTO `Chat` с `dialog_with_user` — с v1.1.0 ядра; `WebAppDataValidator`
+  появился в v1.0.1; `Update::$user` nullable и фолбэки `user`/`chat_id` — с v1.0.3; `ApiClient::create()` с
+  `global_rate_limiter`, deprecated-права админов и пустое тело `sendAnswer` — с v1.0.6; Comments API (`getComments`/
+  `sendComment`/`editComment`/`deleteComment`/`getComment`), `getUpdatesBatch`, `UploadResult` →
+  `UploadedInfo`, `sendAnswer` с `notification`/`disableLinkPreview`, `Update::$comment` и события комментариев — с
+  v1.1.6 — версия ниже не резолвит актуальные сигнатуры), `laravel/framework ^12.0|^13.0`, `guzzlehttp/guzzle ^7.15`
+  (обязателен как PSR-18 по умолчанию), `illuminate/support`/`illuminate/queue`/`illuminate/routing` — через
+  `laravel/framework`; dev — Testbench под поддерживаемую версию Laravel, phpunit ^11.5, phpstan ^2.0,
+  friendsofphp/php-cs-fixer ^3.0. Точные версии Testbench сверить с совместимостью Laravel на момент реализации, версии
+  ядра — динамически (раздел 1).
 
 ### OWASP Top 10 (обязательно при написании кода)
 
@@ -230,7 +297,8 @@ scripts/check-coverage.php         порог покрытия строк (по 
 - **A05** — publishable-конфиг с безопасными дефолтами; `php artisan config:cache` безопасен для `env()`
   (использовать только на этапе конфига); секреты не попадают в `config:show` без необходимости (документировать
   маскирование при выводе).
-- **A06/A08** — актуальные зависимости: PHP ^8.4, ядро ^1.0.6, `composer audit` в Gate и CI; CI на push/PR.
+- **A06/A08** — актуальные зависимости: PHP ^8.4, ядро `^1.1.6` (фактическая версия — динамически, раздел 1),
+  `composer audit` в Gate и CI; CI на push/PR.
 - **A07** — все сравнения секретов — только `hash_equals` (ядро + middleware вебхука).
 - **A09** — не логировать: access token, webhook secret, `vcf_info`, callback payload, тела запросов с токеном.
   Логировать статус/код/сообщение ошибки API (в коде ядра сообщения не содержат токенов). Тела логируются только при
@@ -238,9 +306,14 @@ scripts/check-coverage.php         порог покрытия строк (по 
 - **A10** — URL подписок/загрузки только `https://` (ядро); при необходимости — allow-list хостов в конфиге
   (`webhook.allowed_hosts`), валидация домена до создания подписки.
 
-## 6. Ключевые факты API MAX (источник — ядро/`max-openapi`)
+## 6. Ключевые факты API MAX (источник — `docs/api-reference.md` ядра / `max-openapi`)
+
+Здесь только факты, влияющие на адаптер. Полный справочник (спека, эндпоинты, enums, DTO, лимиты, вебхуки и раздел 9
+«что делать при расхождении спека vs реальный API») — в `max-php-client/docs/api-reference.md`; дублировать его
+содержимое здесь не нужно.
 
 - Аутентификация: `Authorization: <access_token>` без `Bearer`; query-передача токена не поддерживается.
+
 - Сервер: `https://platform-api2.max.ru` (домен **`platform-api2`**).
 - Нужна цепочка сертификатов Минцифры (в локальных средах — кастомный CA).
 - Вебхуки — только HTTPS :443, доверенный CA, полная цепочка; секрет 5–256 символов `[a-zA-Z0-9_-]`; ответ обязателен
@@ -251,13 +324,20 @@ scripts/check-coverage.php         порог покрытия строк (по 
   запросу, включая ретраи и загрузку медиа; при исчерпании ядро ждёт пополнения, а не бросает исключение).
 - `sendAnswer()` без `message` шлёт тело `{}` (requestBody обязателен) — ответ на callback без обновления сообщения;
   deprecated-права админов (`post_edit_delete_message`/`edit_message`/`delete_message`) API возвращает, но выдавать
-  нельзя (`addChatAdmin` кидает `InvalidArgumentException`); `join_time` — **миллисекунды**.
+  нельзя (`addChatAdmin` кидает `InvalidArgumentException`).
 - Загрузка медиа: `POST /uploads` с `type` в query; после загрузки **ждать** готовности вложения —
   `attachment.not.ready` ретраится автоматически. Домены загрузки: `https://fu.oneme.ru`,
   `https://iu.oneme.ru`, `https://vu.okcdn.ru`.
 - `GET /chats` **deprecated** — хранить `chat_id` через подписку на `bot_added`/`bot_started`.
+- `addChatMembers` **deprecated** — добавление участников недоступно ботам.
+- Комментарии к постам в каналах (ядро с v1.1.6): `getComments`/`getComment`/`sendComment`/`editComment`/
+  `deleteComment`, апдейты `comment_created`/`comment_edited`/`comment_removed` приходят в `Update::$comment`
+  (DTO `CommentMessage`: `recipient` c `chat_id`/`chat_type`/`post_id`, `body` с `markup`). Права бота:
+  `read_all_messages`; токен — админ канала с этими правами.
+- `getUpdatesBatch` — батчевое получение апдейтов (`UpdatesResult`), полный набор 19 `UpdateType` включает
+  `bot_admin_permissions_changed` и события комментариев.
 - `type=photo` deprecated → `type=image`.
-- Timestamp: почти все — **Unix в миллисекундах**; исключение `join_time` — секунды.
+- Timestamp — Unix в **миллисекундах**, включая `join_time` (ядро: `Dto/ChatMember::$joinTime`).
 - Пагинация: `marker` (int64, nullable) + `count`. `message_id`/`callback_id` — строки; `chat_id`/`user_id` — int64.
 - Эндпоинты и DTO — см. `src/ApiClient.php` ядра и `max-openapi`. Не выдумывать сигнатуры.
 
@@ -308,10 +388,13 @@ source .env && docker run --rm --network host \
   phpstan, phpunit + coverage gate, `composer audit`.
 - **Job `integration`**: смоук-тесты реального API; без `MAX_API_TOKEN` — шаги пропускаются (`secrets` в `if`
   на уровне job запрещены GitHub Actions, передавать через job-level `env`).
-- **Релиз**: merge PR `dev → main` → `git tag vX.Y.Z && git push origin vX.Y.Z` → GitHub Release из тега → Packagist
-  (автообновление по webhook). Тег ставится только на `main`.
-- **Релиз-ноты**: хранятся в `.ai/release/` (gitignored) за последние два релиза; формируются/обновляются по запросу
-  владельца после изменений, старые — удаляются. История в git не хранится.
+- Ключевые детали workflow: `-e COMPOSER_ROOT_VERSION=dev-main` во всех шагах (обход отсутствия git-метаданных в
+  volume), `-e XDEBUG_MODE=coverage` для генерации отчёта, кэш `vendor` по `composer.json`.
+- **Релиз**: описание версии в `.agents/release/RELEASE_NOTES_vX.Y.Z.md` → merge PR `dev → main` →
+  `git tag vX.Y.Z && git push origin vX.Y.Z` → GitHub Release из тега → Packagist (автообновление по webhook). Значимые
+  пункты релиза продублировать в `README.md` (раздел «История изменений»).
+- **Формат release-notes**: `Новое` / `Изменение (BC)` / `Затронутые сценарии` / `Качество` (тесты, покрытие, аудит).
+  Файл не удаляется после релиза — вся история в `.agents/release/`, значимое в README и в GitHub Release.
 
 ## 9. Частые ошибки (gotchas)
 
@@ -331,13 +414,19 @@ source .env && docker run --rm --network host \
 13. WebAppData мини-приложения — только через `WebAppContext` (не доверять `?WebAppData=...` без верификации HMAC).
 14. `max:subscribe`/`max:unsubscribe` — только HTTPS-URL; `allowed_hosts` проверяется до создания подписки.
 15. Пакет — тонкий адаптер: не переписывать логику ядра, только делегировать.
+16. Версии ядра в этом файле — ориентир, не источник истины: проверяй `composer show geekcodev/max-php-client` и теги
+    ядра, иначе легко сослаться на устаревший constraint.
+17. После содержательной сессии — файл в `.agents/journals/sessions/` и строка в `JOURNAL.md` (раздел 4.1), иначе
+    решения и результаты Gate теряются вместе с локальным каталогом.
 
 ## 10. Чек-лист «production-grade» (самооценка при доработках)
 
 - [ ] CI зелёный: lint 0, phpstan 0, phpunit зелёные, покрытие ≥95%, `composer audit` чист.
 - [ ] Новый код покрыт unit-тестами (HTTP-слой — через MockHttpClient / подмену в контейнере).
+- [ ] Публичный API не сломан: сигнатуры в patch-релизе не менялись.
 - [ ] Секретов нет в коде, логах, коммитах; конфиг publishable с безопасными дефолтами.
 - [ ] Входные данные валидируются (вебхук, middleware, параметры запросов).
 - [ ] Вебхук-обработка асинхронная; 200 в окне 30с; fail-closed без секрета.
-- [ ] Документация (README, .env.example, AGENTS.md) синхронна с реальным поведением кода.
+- [ ] Документация (README, .env.example, AGENTS.md) синхронна с реальным поведением кода и версиями ядра.
+- [ ] Обновлены `.agents/journals/`, при необходимости — `.agents/plans/` и `.agents/release/`.
 - [ ] Релиз оформлен: merge в main → тег → GitHub Release → Packagist.

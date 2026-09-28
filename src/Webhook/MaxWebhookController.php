@@ -48,6 +48,7 @@ final class MaxWebhookController
             Log::warning('MAX webhook: invalid payload rejected.', [
                 'exception' => $exception::class,
                 'code' => $exception->getCode(),
+                'message' => $exception->getMessage(),
             ]);
 
             return response()->json(['error' => 'invalid_payload'], 400);
