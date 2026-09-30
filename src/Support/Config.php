@@ -273,6 +273,27 @@ final readonly class Config
         return $this->int('users.profile_check_interval', 86400);
     }
 
+    /**
+     * Сохранять телефон из подтверждённого контакта (request_contact) в max_users.phone.
+     * По умолчанию выключено: это персональные данные, включать нужно явно.
+     */
+    /**
+     * Запрашивать метаданные чата (название, описание, иконку) через getChat
+     * при bot_added/bot_started, если название ещё неизвестно.
+     */
+    public function chatsFetchMetadata(): bool
+    {
+        return $this->bool('chats.fetch_metadata', true);
+    }
+
+    /**
+     * Периодичность перепроверки метаданных чата, сек (0 — только при пустом названии).
+     */
+    public function chatsTitleCheckInterval(): int
+    {
+        return $this->int('chats.title_check_interval', 0);
+    }
+
     private function string(string $key, string $default): string
     {
         $value = config(self::KEY . '.' . $key, $default);

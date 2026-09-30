@@ -4,14 +4,19 @@ declare(strict_types=1);
 
 namespace GeekCo\LaravelMaxClient;
 
+use GeekCo\LaravelMaxClient\Console\MaxChatsRefreshCommand;
 use GeekCo\LaravelMaxClient\Console\MaxListenCommand;
 use GeekCo\LaravelMaxClient\Console\MaxListSubscriptionsCommand;
 use GeekCo\LaravelMaxClient\Console\MaxSubscribeCommand;
+use GeekCo\LaravelMaxClient\Console\MaxUpgradeCommand;
 use GeekCo\LaravelMaxClient\Console\MaxUnsubscribeCommand;
 use GeekCo\LaravelMaxClient\Http\HttpClientFactory;
 use GeekCo\LaravelMaxClient\Http\Middleware\LogMaxRequestsMiddleware;
 use GeekCo\LaravelMaxClient\Http\Middleware\SetMaxFrameAncestors;
 use GeekCo\LaravelMaxClient\Listeners\PersistMaxChatListener;
+use GeekCo\LaravelMaxClient\Listeners\PersistMaxUserPhoneListener;
+use GeekCo\LaravelMaxClient\Services\MaxChatProfileService;
+use GeekCo\LaravelMaxClient\Services\MaxContactService;
 use GeekCo\LaravelMaxClient\Services\MaxUserProfileService;
 use GeekCo\LaravelMaxClient\Support\Config;
 use GeekCo\LaravelMaxClient\Support\Logger;
@@ -69,11 +74,29 @@ final class MaxServiceProvider extends ServiceProvider
         );
 
         $this->app->singleton(
+            MaxChatProfileService::class,
+            static fn (Container $app): MaxChatProfileService => new MaxChatProfileService(
+                $app->make(ApiClient::class),
+                $app->make(Config::class),
+                $app->make(Logger::class),
+            ),
+        );
+
+        $this->app->singleton(
+            MaxContactService::class,
+            static fn (Container $app): MaxContactService => new MaxContactService(
+                $app->make(Config::class),
+                $app->make(Logger::class),
+            ),
+        );
+
+        $this->app->singleton(
             MaxUserProfileService::class,
             static fn (Container $app): MaxUserProfileService => new MaxUserProfileService(
                 $app->make(ApiClient::class),
                 $app->make(Config::class),
                 $app->make(Logger::class),
+                $app->make(MaxChatProfileService::class),
             ),
         );
 
@@ -129,20 +152,25 @@ final class MaxServiceProvider extends ServiceProvider
     {
         if ($this->app->runningInConsole()) {
             $this->commands([
+                MaxChatsRefreshCommand::class,
                 MaxListenCommand::class,
                 MaxListSubscriptionsCommand::class,
                 MaxSubscribeCommand::class,
                 MaxUnsubscribeCommand::class,
+                MaxUpgradeCommand::class,
             ]);
 
             $this->publishes([
                 __DIR__.'/../config/laravel-max-client.php' => $this->app->configPath(self::CONFIG_KEY.'.php'),
             ], self::CONFIG_KEY.'-config');
-
-            $this->publishes([
-                __DIR__.'/../database/migrations' => $this->app->databasePath('migrations'),
-            ], self::CONFIG_KEY.'-migrations');
         }
+
+        // Миграции подгружаются из пакета, публикация не требуется: копия в
+        // database/migrations перекрывает файл пакета (Migrator::getMigrationFiles
+        // оставляет последнее вхождение имени, а путь приложения идёт последним),
+        // из-за чего исправленный файл пакета до потребителя не доходит.
+        // Вне runningInConsole() — иначе статус и откат миграций видят не всё.
+        $this->loadMigrationsFrom(__DIR__.'/../database/migrations');
 
         $router = $this->app->make(Router::class);
         $router->aliasMiddleware('max.webapp', ResolveWebAppIdentity::class);
@@ -169,5 +197,10 @@ final class MaxServiceProvider extends ServiceProvider
                 PersistMaxChatListener::class,
             );
         }
+
+        $this->app->make(Dispatcher::class)->listen(
+            MaxUpdateReceived::class,
+            PersistMaxUserPhoneListener::class,
+        );
     }
 }

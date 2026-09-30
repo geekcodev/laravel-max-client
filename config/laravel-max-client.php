@@ -169,9 +169,9 @@ return [
     |--------------------------------------------------------------------------
     |
     | При chats.enabled=true пакет создаёт/обновляет записи в max_users
-    | при получении bot_added/bot_started с объектом user. Миграция
-    | публикуется: php artisan vendor:publish
-    | --tag=laravel-max-client-migrations. model — класс модели (для переопределения).
+    | при получении bot_added/bot_started с объектом user. Таблица создаётся
+    | миграцией пакета, публикация не требуется. model — класс модели
+    | (для переопределения).
     |
     */
 
@@ -198,6 +198,8 @@ return [
     'chats' => [
         'enabled' => filter_var(env('MAX_CHATS_ENABLED', false), FILTER_VALIDATE_BOOLEAN),
         'model' => (string) env('MAX_CHATS_MODEL', \GeekCo\LaravelMaxClient\Models\MaxChat::class),
+        'fetch_metadata' => filter_var(env('MAX_CHATS_FETCH_METADATA', true), FILTER_VALIDATE_BOOLEAN),
+        'title_check_interval' => (int) env('MAX_CHATS_TITLE_CHECK_INTERVAL', 0),
     ],
 
     /*

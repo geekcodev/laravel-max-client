@@ -10,6 +10,7 @@ use GeekCo\LaravelMaxClient\Webhook\HandleMaxUpdateJob;
 use GeekCo\LaravelMaxClient\Webhook\MaxUpdateReceived;
 use GeekCo\LaravelMaxClient\Webhook\MaxWebhookController;
 use Illuminate\Contracts\Events\Dispatcher;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Queue;
@@ -112,6 +113,10 @@ final class MaxWebhookControllerTest extends TestCase
 
     public function testResponds200WithoutQueuingWhenNoListenerRegistered(): void
     {
+        // Слушатель телефона регистрируется пакетом всегда, поэтому отсутствие
+        // обработчиков задаётся явно — это и есть предусловие теста.
+        Event::forget(MaxUpdateReceived::class);
+
         Queue::fake();
 
         $response = $this->postJson('/max/webhook', $this->updatePayload(), [self::SECRET_HEADER => 'test-secret']);

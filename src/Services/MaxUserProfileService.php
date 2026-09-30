@@ -9,27 +9,31 @@ use GeekCo\LaravelMaxClient\Models\MaxUser;
 use GeekCo\LaravelMaxClient\Support\Config;
 use GeekCo\LaravelMaxClient\Support\Logger;
 use GeekCo\MaxPhpClient\ApiClient;
-use GeekCo\MaxPhpClient\Dto\Chat;
 use GeekCo\MaxPhpClient\Dto\ChatMember;
 use GeekCo\MaxPhpClient\Dto\UserWithPhoto;
 use GeekCo\MaxPhpClient\Enum\ChatType;
 
 /**
+ * Внутренний класс: собирается контейнером, вручную не инстанцировать. В v1.1.4 в конструктор
+ * добавлен обязательный MaxChatProfileService — изменение задокументировано в
+ * .agents/release/RELEASE_NOTES_v1.1.4.md. При переопределении привязки передавайте все четыре
+ * зависимости (см. MaxServiceProvider::register()).
+ */
+/**
  * Получение и сохранение полного профиля пользователя MAX (включая аватар).
  * Аватар в апдейтах не приходит — источник истины getChatMembers (группы/
  * каналы) и dialog_with_user (диалоги, где getChatMembers недоступен). Тип
  * чата берём из реестра max_chats.chat_type, при неизвестном — запрашиваем
- * getChat() и запоминаем. Триггер «когда вызывать» — в приложении.
+ * getChat() через MaxChatProfileService и запоминаем. Триггер «когда вызывать» —
+ * в приложении.
  */
 final class MaxUserProfileService
 {
-    /** @var array<int, Chat> */
-    private array $chatCache = [];
-
     public function __construct(
         private readonly ApiClient $api,
         private readonly Config $config,
         private readonly Logger $logger,
+        private readonly MaxChatProfileService $chatProfile,
     ) {
     }
 
@@ -165,7 +169,7 @@ final class MaxUserProfileService
      */
     private function fetchForChat(int $chatId, array $userIds): bool
     {
-        if ($this->chatTypeFor($chatId) === ChatType::Dialog) {
+        if ($this->chatProfile->chatTypeFor($chatId) === ChatType::Dialog) {
             return $this->fetchForDialog($chatId, $userIds);
         }
 
@@ -189,52 +193,6 @@ final class MaxUserProfileService
     }
 
     /**
-     * Тип чата: из реестра max_chats.chat_type, при неизвестном — через
-     * getChat() с записью в реестр (по chat_id, без перетирания известного).
-     */
-    private function chatTypeFor(int $chatId): ?ChatType
-    {
-        $chat = $this->config->chatsModel()::query()
-            ->where('chat_id', $chatId)
-            ->first();
-
-        if ($chat !== null && $chat->chat_type instanceof ChatType) {
-            return $chat->chat_type;
-        }
-
-        $resolved = $this->chatFor($chatId);
-
-        if ($resolved === null) {
-            return null;
-        }
-
-        $this->config->chatsModel()::query()
-            ->where('chat_id', $chatId)
-            ->whereNull('chat_type')
-            ->update(['chat_type' => $resolved->type]);
-
-        return $resolved->type;
-    }
-
-    private function chatFor(int $chatId): ?Chat
-    {
-        if (isset($this->chatCache[$chatId])) {
-            return $this->chatCache[$chatId];
-        }
-
-        try {
-            return $this->chatCache[$chatId] = $this->api->getChat($chatId);
-        } catch (\Throwable $e) {
-            $this->logger->log('warning', 'MAX getChat failed.', [
-                'chat_id' => $chatId,
-                'error' => $e->getMessage(),
-            ]);
-
-            return null;
-        }
-    }
-
-    /**
      * Профиль собеседника в диалоге: getChat() -> dialog_with_user. Для
      * диалога это единственный источник полного профиля с аватаром.
      *
@@ -242,7 +200,7 @@ final class MaxUserProfileService
      */
     private function fetchForDialog(int $chatId, array $userIds): bool
     {
-        $chat = $this->chatFor($chatId);
+        $chat = $this->chatProfile->fetch($chatId);
 
         if ($chat === null || $chat->dialogWithUser === null) {
             return false;

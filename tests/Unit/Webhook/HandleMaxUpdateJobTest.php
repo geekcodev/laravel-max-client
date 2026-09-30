@@ -55,6 +55,8 @@ final class HandleMaxUpdateJobTest extends TestCase
 
     public function testShouldQueueIsFalseWithoutListeners(): void
     {
+        Event::forget(MaxUpdateReceived::class);
+
         $job = new HandleMaxUpdateJob(Update::fromArray($this->updatePayload()));
 
         $this->assertFalse($job->shouldQueue());

@@ -13,11 +13,11 @@
 - **Что это.** Laravel-пакет **`geekcodev/laravel-max-client`** — тонкий фреймворк-адаптер поверх framework-agnostic
   ядра **`geekcodev/max-php-client`** (клиент для **MAX Messenger Bot API**,
   https://max.ru). Репозиторий/рабочая папка — `laravel-max-client`.
-- **Статус.** Последний выпущенный релиз адаптера — **v1.1.2** (тег `v1.1.2`, GitHub Release, Packagist
+- **Статус.** Последний выпущенный релиз адаптера — **v1.1.3** (тег `v1.1.3`, GitHub Release, Packagist
   `geekcodev/laravel-max-client`). Актуальную версию всегда уточняй по `git tag --sort=-v:refname | head -1` и
   `git log --oneline -10`, а не по этому файлу. Незакоммиченная работа лежит в `dev`.
 - **Ядро.** `geekcodev/max-php-client` (namespace `GeekCo\MaxPhpClient`) — последний тег на момент последней
-  синхронизации **v1.1.6**, constraint в `composer.json` — `^1.1.6`. Ядро даёт PSR-7/17/18 транспорт, ретраи, rate
+  синхронизации **v1.1.8**, constraint в `composer.json` — `^1.1.8`. Ядро даёт PSR-7/17/18 транспорт, ретраи, rate
   limit, загрузку медиа, webhook-хендлер, верификацию контакта и данных мини-приложения. **Фактические версии проверяй
   динамически**: `composer show geekcodev/max-php-client` и `git -C ../max-php-client tag --sort=-v:refname |
   head -1` — не по этому файлу. Исправления ядра (CRLF/base64/`vcf_info` в верификации контакта, строковый
@@ -72,18 +72,29 @@
 
 ```
 config/laravel-max-client.php      publishable-конфиг (echo php artisan vendor:publish)
-database/migrations/               publishable-миграции (max_chats; vendor:publish --tag=laravel-max-client-migrations)
+database/migrations/               миграции max_users/max_chats: подгружаются провайдером
+                                   (loadMigrationsFrom), публикация не нужна. Уже выполненные миграции
+                                   НЕЛЬЗЯ править на месте — новые поля только отдельными аддитивными
+                                   миграциями, иначе у установленных проектов migrate отработает вхолостую
 examples/                          рабочие примеры (фасад, webhook-listener, PSR-18, webapp, long-polling)
 src/
-  MaxServiceProvider.php           composition root: publish, bindings, регистрация роута/фасада/алиасов middleware
+  MaxServiceProvider.php           composition root: publish, bindings, регистрация роута/фасада/алиасов middleware,
+                                   loadMigrationsFrom, регистрация команд и слушателей реестров
   Console/MaxListenCommand.php     artisan max:listen: Long Polling для локальной разработки (--once)
   Console/MaxSubscribeCommand.php  artisan max:subscribe: регистрация webhook-подписки (HTTPS + allowed_hosts)
   Console/MaxUnsubscribeCommand.php artisan max:unsubscribe: удаление webhook-подписки
+  Console/MaxChatsRefreshCommand.php artisan max:chats:refresh: дозаполнение/перепроверка метаданных чатов
+  Console/MaxUpgradeCommand.php    artisan max:upgrade [--dry-run]: проверка/дополнение схемы реестров
+                                   (страховка, в штатном обновлении не нужен — хватает migrate)
   WebApp/WebAppContext.php         верификация WebAppData мини-приложения (resolve/verify из Request и из строки)
   WebApp/ResolveWebAppIdentity.php middleware max.webapp: сессия user_id/chat_id + strict (403)
   Enums/MaxChatStatus.php        статусы реестра чатов (active/stopped/removed + label())
   Models/MaxChat.php               модель реестра чатов max_chats (переопределяемая через chats.model)
-  Listeners/PersistMaxChatListener.php upsert max_chats по bot_added/bot_started/bot_stopped/bot_removed
+  Listeners/PersistMaxChatListener.php upsert max_chats по bot_added/bot_started/bot_stopped/bot_removed,
+                                   title из chat_title_changed, дозаполнение метаданных, last_activity_at
+  Listeners/PersistMaxUserPhoneListener.php телефон из подтверждённого контакта (request_contact), выключен по умолчанию
+  Services/MaxChatProfileService.php метаданные чата через getChat (общий кэш ответа), чаты реестра
+  Services/MaxContactService.php   верификация контакта и извлечение телефона (ядро: ContactVerifier/ContactPhoneExtractor)
   Services/MaxUserProfileService.php  заполнение max_users (аватар/профиль) через getChatMembers
   Http/HttpClientFactory.php       SRP: сборка PSR-18/17 клиентов (Guzzle по умолчанию)
   Http/Middleware/SetMaxFrameAncestors.php middleware max.csp: frame-ancestors для встраивания в MAX
@@ -231,12 +242,48 @@ scripts/check-coverage.php         порог покрытия строк (по 
   `exclude_response_body_paths` (без тела); `X-Request-ID` проксируется в ответ. `HandleMaxUpdateJob` логирует
   start/finish/failed (context: `update_type`, `user_id`, `chat_id`).
 - **Реестр чатов** (`max_chats`): реализация документированной практики MAX (getChats deprecated — chat_id хранить через
-  `bot_added`/`bot_started`). Publishable-миграция, модель `Models\MaxChat` (переопределяемая `chats.model`,
-  `MAX_CHATS_MODEL`), enum `Enums\MaxChatStatus`, слушатель `Listeners\PersistMaxChatListener` (upsert по
-  `bot_added`/`bot_started`/`bot_stopped`/`bot_removed`, пропуск при `chat_id=null`; апдейты с `message`/`comment`/
-  `callback` статус не меняют, но дозаполняют `chat_type` из `Recipient::chatType`). Включается `chats.enabled`
+  `bot_added`/`bot_started`). Миграция пакета (`loadMigrationsFrom`, публикация не нужна), модель `Models\MaxChat`
+  (переопределяемая `chats.model`, `MAX_CHATS_MODEL`), enum `Enums\MaxChatStatus`, слушатель
+  `Listeners\PersistMaxChatListener` (upsert по `bot_added`/`bot_started`/`bot_stopped`/`bot_removed`, пропуск при
+  `chat_id=null`; апдейты с `message`/`comment`/`callback` статус не меняют, но дозаполняют `chat_type` из
+  `Recipient::chatType` и обновляют `last_activity_at`). События `bot_*` несут сведения о боте, а не о пользователе,
+  поэтому при `userId === null` новая строка не заводится (`user_id` — часть уникального ключа), но `status`/
+  `last_activity_at`/`chat_type` обновляются во всех записях с этим `chat_id`
+  (`applyStatusToKnownRows`). Без этого `bot_removed` без `user` терялся и чат навсегда оставался `active`. Записей
+  нет — ничего не меняется. Реструктуризация `max_chats` в одну строку на чат (и отдельная
+  `max_chat_users`) отложена на отдельный релиз — см. `.agents/plans/`. Включается `chats.enabled`
   (`MAX_CHATS_ENABLED`); регистрация слушателя на `MaxUpdateReceived` — в `MaxServiceProvider::boot()`. Это
   инфраструктура — бизнес-обработка остаётся в приложении.
+- **Метаданные чата** (`Services\MaxChatProfileService`): название, описание, ссылка, иконка приходят **только** из
+  `getChat()` — апдейты `bot_added`/`bot_started` несут лишь `chat_id`/`user`/`is_channel`, а название приходит
+  отдельным `chat_title_changed`. Singleton с кэшем ответа `getChat` на время работы (`forgetChatCache()` — сброс). Один
+  ответ пишется во **все** записи реестра с этим `chat_id` (в группе по записи на участника: 50 участников — один
+  запрос); пустой ответ не затирает известное значение. `chat_type` дозаполняется только при `null`. API:
+  `sync(int): bool`, `ensureMetadata(int): bool`, `inheritKnownMetadata(int): bool`, `hasKnownTitle(int): bool`,
+  `refresh(int|list<int>|null): bool`, `pendingChatIds(...)` (исключает чаты свежее `chats.title_check_interval`),
+  `chatTypeFor(int): ?ChatType`, `activeChatIds(): list<int>`. Вызов `fetch` при `bot_added`/`bot_started` — только при
+  `chats.fetch_metadata` (`MAX_CHATS_FETCH_METADATA`, default true). Правило в три состояния на `chat_id`:
+  название неизвестно ни в одной записи → `getChat`, ответ пишется всем; название есть, но запись новая → наследование
+  без запроса (`inheritKnownMetadata`); заполнены все → ничего. Наследование обязательно: проверка «есть ли заполненная
+  строка» оставляла всех участников после первого без метаданных, а проверка «заполнены ли все» дала бы по одному
+  одинаковому запросу на участника. как проверенные недавно.
+- **Правило миграций**: новая колонка — только новая миграция, никогда не правка уже выполненной. Правка
+  `create_max_chats_table` на месте у установленного проекта не применится (файл помечен выполненным), и
+  `php artisan migrate` молча ничего не добавит. Guard: `tests/Feature/MaxMigrationsUpgradeTest.php`
+  (`testCreateMigrationsStayFrozen`, `testNewColumnsAreDeclaredInAdditiveMigrationsOnly`).
+- **Обновление после обновления пакета**: обычного `php artisan migrate` достаточно — аддитивные миграции видны как
+  невыполненные. `MaxUpgradeCommand` (`php artisan max:upgrade [--dry-run]`) — страховка для рассинхронизации (ручные
+  правки, ранее опубликованные миграции): идемпотентно добавляет недостающие колонки/индексы, ничего не удаляет.
+- **Телефон из контакта** (`Services\MaxContactService` + `Listeners\PersistMaxUserPhoneListener`): апдейт
+  `request_contact` (вложение типа contact) содержит телефон, но в `max_users` не попадает. Отдельного флага включения
+  нет: контакт формируется платформой из номера аккаунта отправителя (регистрация в MAX возможна на один номер), поэтому
+  это номер самого пользователя; пересланный контакт приходит файлом и в этот путь не попадает. Телефон пишется в
+  `max_users.phone`, отметка — `phone_verified_at`, запись создаётся при отсутствии. Проверка подписи и разбор vCard —
+  только ядром (`ContactVerifier`, `ContactPhoneExtractor`); телефон и `vcf_info` в логи не попадают. Отличающийся номер
+  **перезаписывается** (смена номера аккаунта, факт логируется без значений); тот же номер обновляет только
+  `phone_verified_at`. Обрабатываются только
+  `message_created`/`message_callback`; `comment_*` и `bot_*` игнорируются. Значение сохраняется как есть — канонизация
+  под формат потребителя делается в слое приложения, одним местом.
 - **Профиль пользователя** (`Services\MaxUserProfileService`): наполнение `max_users` полноценным профилем (аватар
   `avatar_url`/`full_avatar_url`, `name`, `description`) через ядро `getChatMembers` (в апдейтах аватар не приходит).
   Singleton в контейнере (зависимости `ApiClient`, `Config`, `Logger`). API: `refresh(int|list<int>): bool`
@@ -279,7 +326,8 @@ scripts/check-coverage.php         порог покрытия строк (по 
   `global_rate_limiter`, deprecated-права админов и пустое тело `sendAnswer` — с v1.0.6; Comments API (`getComments`/
   `sendComment`/`editComment`/`deleteComment`/`getComment`), `getUpdatesBatch`, `UploadResult` →
   `UploadedInfo`, `sendAnswer` с `notification`/`disableLinkPreview`, `Update::$comment` и события комментариев — с
-  v1.1.6 — версия ниже не резолвит актуальные сигнатуры), `laravel/framework ^12.0|^13.0`, `guzzlehttp/guzzle ^7.15`
+  v1.1.6 — версия ниже не резолвит актуальные сигнатуры; `ContactPhoneExtractor::fromVcf()` — с v1.1.7),
+  `laravel/framework ^12.0|^13.0`, `guzzlehttp/guzzle ^7.15`
   (обязателен как PSR-18 по умолчанию), `illuminate/support`/`illuminate/queue`/`illuminate/routing` — через
   `laravel/framework`; dev — Testbench под поддерживаемую версию Laravel, phpunit ^11.5, phpstan ^2.0,
   friendsofphp/php-cs-fixer ^3.0. Точные версии Testbench сверить с совместимостью Laravel на момент реализации, версии
@@ -297,7 +345,7 @@ scripts/check-coverage.php         порог покрытия строк (по 
 - **A05** — publishable-конфиг с безопасными дефолтами; `php artisan config:cache` безопасен для `env()`
   (использовать только на этапе конфига); секреты не попадают в `config:show` без необходимости (документировать
   маскирование при выводе).
-- **A06/A08** — актуальные зависимости: PHP ^8.4, ядро `^1.1.6` (фактическая версия — динамически, раздел 1),
+- **A06/A08** — актуальные зависимости: PHP ^8.4, ядро `^1.1.8` (фактическая версия — динамически, раздел 1),
   `composer audit` в Gate и CI; CI на push/PR.
 - **A07** — все сравнения секретов — только `hash_equals` (ядро + middleware вебхука).
 - **A09** — не логировать: access token, webhook secret, `vcf_info`, callback payload, тела запросов с токеном.
