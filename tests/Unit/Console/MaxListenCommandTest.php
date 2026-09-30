@@ -14,6 +14,7 @@ use GeekCo\MaxPhpClient\Dto\Update;
 use GeekCo\MaxPhpClient\LongPolling\LongPollingRunner;
 use GuzzleHttp\Psr7\Response;
 use Illuminate\Contracts\Events\Dispatcher;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Queue;
 use Psr\Http\Client\ClientInterface;
 
@@ -85,6 +86,10 @@ final class MaxListenCommandTest extends TestCase
 
     public function testDoesNotDispatchWithoutListener(): void
     {
+        // Слушатель телефона регистрируется пакетом всегда, поэтому отсутствие
+        // обработчиков задаётся явно — это и есть предусловие теста.
+        Event::forget(MaxUpdateReceived::class);
+
         Queue::fake();
         $mock = $this->mockUpdates([$this->updatePayload()]);
 

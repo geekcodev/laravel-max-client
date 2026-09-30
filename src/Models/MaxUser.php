@@ -20,6 +20,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @property string|null $full_avatar_url
  * @property string|null $phone
  * @property string|null $email
+ * @property \Illuminate\Support\Carbon|null $phone_verified_at
  * @property \Illuminate\Support\Carbon|null $profile_checked_at
  */
 class MaxUser extends Model
@@ -45,6 +46,7 @@ class MaxUser extends Model
         'full_avatar_url',
         'phone',
         'email',
+        'phone_verified_at',
         'profile_checked_at',
     ];
 
@@ -54,6 +56,7 @@ class MaxUser extends Model
             'user_id' => 'integer',
             'is_bot' => 'boolean',
             'last_activity_time' => 'integer',
+            'phone_verified_at' => 'datetime',
             'profile_checked_at' => 'datetime',
         ];
     }

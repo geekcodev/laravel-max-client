@@ -114,6 +114,96 @@ final class PersistMaxChatListenerTest extends TestCase
         $this->assertSame(0, MaxChat::query()->count());
     }
 
+    public function testBotRemovedWithoutUserMarksEveryChatRowRemoved(): void
+    {
+        $this->givenChatRows();
+
+        $this->dispatch(UpdateType::BotRemoved, withUser: false);
+
+        $this->assertSame(
+            [MaxChatStatus::Removed, MaxChatStatus::Removed],
+            $this->statusesOfChat(222),
+        );
+    }
+
+    public function testBotStoppedWithoutUserMarksEveryChatRowStopped(): void
+    {
+        $this->givenChatRows();
+
+        $this->dispatch(UpdateType::BotStopped, withUser: false);
+
+        $this->assertSame(
+            [MaxChatStatus::Stopped, MaxChatStatus::Stopped],
+            $this->statusesOfChat(222),
+        );
+    }
+
+    public function testBotAddedWithoutUserReactivatesKnownChatRows(): void
+    {
+        $this->givenChatRows(status: MaxChatStatus::Removed);
+
+        $this->dispatch(UpdateType::BotAdded, withUser: false);
+
+        $this->assertSame(
+            [MaxChatStatus::Active, MaxChatStatus::Active],
+            $this->statusesOfChat(222),
+        );
+    }
+
+    public function testChatWideStatusKeepsActivityTimestampFresh(): void
+    {
+        $this->givenChatRows();
+
+        $this->dispatch(UpdateType::BotRemoved, withUser: false);
+
+        $this->assertTrue(
+            MaxChat::query()->where('chat_id', 222)->get()
+                ->every(fn (MaxChat $chat): bool => $chat->last_activity_at->greaterThan(now()->subMinute())),
+        );
+    }
+
+    public function testBotRemovedWithoutUserCreatesNoRowsForUnknownChat(): void
+    {
+        $this->dispatch(UpdateType::BotRemoved, withUser: false);
+
+        $this->assertSame(0, MaxChat::query()->count());
+    }
+
+    public function testChatWideStatusWithoutChatIdChangesNothing(): void
+    {
+        $this->givenChatRows();
+
+        $this->dispatch(UpdateType::BotRemoved, withUser: false, chatId: null);
+
+        $this->assertSame(
+            [MaxChatStatus::Active, MaxChatStatus::Active],
+            $this->statusesOfChat(222),
+        );
+    }
+
+    public function testChatWideStatusDoesNotTouchOtherChats(): void
+    {
+        $this->givenChatRows();
+        MaxChat::query()->create([
+            'user_id' => 333,
+            'chat_id' => 999,
+            'status' => MaxChatStatus::Active,
+        ]);
+
+        $this->dispatch(UpdateType::BotRemoved, withUser: false);
+
+        $this->assertSame([MaxChatStatus::Active], $this->statusesOfChat(999));
+    }
+
+    public function testChatWideStatusFillsChatTypeWhenUpdateCarriesIt(): void
+    {
+        $this->givenChatRows();
+
+        $this->dispatch(UpdateType::BotRemoved, withUser: false, isChannel: true);
+
+        $this->assertSame([ChatType::Channel, ChatType::Channel], $this->chatTypesOfChat(222));
+    }
+
     public function testChatUpdateWithTopLevelUserIdIsPersisted(): void
     {
         $this->dispatch(UpdateType::BotStarted, withUser: false, userId: 111, isChannel: true);
@@ -303,12 +393,47 @@ final class PersistMaxChatListenerTest extends TestCase
         $this->assertSame(ChatType::Dialog, $chat->chat_type);
     }
 
-    public function testBotAddedSkipsGetChatWhenIsChannelTrue(): void
+    public function testBotAddedWithIsChannelTrueFetchesMetadata(): void
     {
+        $this->queueGetChatResponse('channel', title: 'Канал MAX');
+
         $this->dispatch(UpdateType::BotAdded, isChannel: true);
 
-        $this->assertSame(0, $this->httpClient->callCount);
-        $this->assertSame(ChatType::Channel, MaxChat::query()->sole()->chat_type);
+        $chat = MaxChat::query()->sole();
+
+        $this->assertSame(1, $this->httpClient->callCount);
+        $this->assertSame(ChatType::Channel, $chat->chat_type);
+        $this->assertSame('Канал MAX', $chat->title);
+    }
+
+    /**
+     * Реестр хранит по записи на каждого участника чата, поэтому один ответ
+     * getChat должен достаться всем записям с тем же chat_id — включая те, что
+     * появились позже, когда участник нажал «старт». Вторая запись не должна
+     * ждать собственного запроса в API: метаданные уже лежат в реестре.
+     */
+    public function testSecondMemberOfSameChatInheritsMetadataWithoutSecondRequest(): void
+    {
+        $this->queueGetChatResponse('channel', title: 'Канал MAX');
+
+        $this->dispatch(UpdateType::BotStarted, isChannel: true);
+        $this->dispatch(UpdateType::BotStarted, user: new User(
+            userId: 222,
+            firstName: 'Мария',
+            lastName: null,
+            username: null,
+            isBot: false,
+            lastActivityTime: 1000,
+        ), isChannel: true);
+
+        $first = MaxChat::query()->where('user_id', 111)->sole();
+        $second = MaxChat::query()->where('user_id', 222)->sole();
+
+        $this->assertSame(1, $this->httpClient->callCount, 'Метаданные уже известны — второй запрос не нужен');
+        $this->assertSame('Канал MAX', $first->title);
+        $this->assertSame('Канал MAX', $second->title, 'Новая запись должна получить известные метаданные');
+        $this->assertSame(ChatType::Channel, $second->chat_type);
+        $this->assertNotNull($second->title_checked_at);
     }
 
     public function testBotStoppedDoesNotCallGetChat(): void
@@ -527,7 +652,161 @@ final class PersistMaxChatListenerTest extends TestCase
         $this->assertSame(ChatType::Chat, MaxChat::query()->sole()->chat_type);
     }
 
-    private function queueGetChatResponse(string $chatType): void
+    public function testBotAddedStoresTitleFromChatForGroupWithIsChannelTrue(): void
+    {
+        $this->queueGetChatResponse('channel', title: 'Рабочая группа');
+
+        $this->dispatch(UpdateType::BotAdded, isChannel: true);
+
+        $chat = MaxChat::query()->sole();
+
+        $this->assertSame('Рабочая группа', $chat->title);
+        $this->assertSame(ChatType::Channel, $chat->chat_type);
+        $this->assertNotNull($chat->title_checked_at);
+    }
+
+    public function testBotAddedDoesNotCallGetChatWhenTitleAlreadyKnown(): void
+    {
+        MaxChat::create([
+            'user_id' => 111,
+            'chat_id' => 222,
+            'status' => MaxChatStatus::Active,
+            'chat_type' => ChatType::Channel,
+            'title' => 'Уже известно',
+        ]);
+
+        $this->dispatch(UpdateType::BotAdded, isChannel: true);
+
+        $this->assertSame(0, $this->httpClient->callCount);
+        $this->assertSame('Уже известно', MaxChat::query()->sole()->title);
+    }
+
+    public function testBotAddedDoesNotCallGetChatWhenFetchMetadataDisabled(): void
+    {
+        config()->set(MaxServiceProvider::CONFIG_KEY . '.chats.fetch_metadata', false);
+
+        $this->dispatch(UpdateType::BotAdded, isChannel: true);
+
+        $this->assertSame(0, $this->httpClient->callCount);
+        $this->assertSame(ChatType::Channel, MaxChat::query()->sole()->chat_type);
+    }
+
+    public function testChatTitleChangedUpdatesEveryRowOfTheChatWithoutApiCall(): void
+    {
+        foreach ([111, 112] as $userId) {
+            MaxChat::create([
+                'user_id' => $userId,
+                'chat_id' => 222,
+                'status' => MaxChatStatus::Active,
+                'chat_type' => ChatType::Channel,
+            ]);
+        }
+
+        $this->dispatch(UpdateType::ChatTitleChanged, title: 'Новое название');
+
+        $this->assertSame(0, $this->httpClient->callCount);
+        $this->assertSame(2, MaxChat::query()->where('title', 'Новое название')->count());
+
+        foreach (MaxChat::query()->get() as $chat) {
+            $this->assertNotNull($chat->title_checked_at);
+        }
+    }
+
+    public function testChatTitleChangedIgnoresEmptyTitle(): void
+    {
+        MaxChat::create([
+            'user_id' => 111,
+            'chat_id' => 222,
+            'status' => MaxChatStatus::Active,
+            'chat_type' => ChatType::Channel,
+            'title' => 'Известное',
+        ]);
+
+        $this->dispatch(UpdateType::ChatTitleChanged, title: '   ');
+        $this->dispatch(UpdateType::ChatTitleChanged, title: null);
+
+        $this->assertSame('Известное', MaxChat::query()->sole()->title);
+        $this->assertNull(MaxChat::query()->sole()->title_checked_at);
+    }
+
+    public function testChatTitleChangedDoesNotCreateChat(): void
+    {
+        $this->dispatch(UpdateType::ChatTitleChanged, title: 'Несуществующий', chatId: 999);
+
+        $this->assertSame(0, MaxChat::query()->count());
+    }
+
+    public function testMessageCreatedMovesLastActivityWithoutCreatingChat(): void
+    {
+        MaxChat::create([
+            'user_id' => 111,
+            'chat_id' => 222,
+            'status' => MaxChatStatus::Active,
+            'chat_type' => ChatType::Chat,
+            'last_activity_at' => now()->subDay(),
+        ]);
+
+        $this->dispatchMessage('chat');
+
+        $this->assertSame(0, $this->httpClient->callCount);
+
+        $chat = MaxChat::query()->sole();
+
+        $this->assertTrue($chat->last_activity_at->greaterThan(now()->subMinute()));
+        $this->assertSame(1, MaxChat::query()->count());
+    }
+
+    public function testMessageCallbackMovesLastActivity(): void
+    {
+        MaxChat::create([
+            'user_id' => 111,
+            'chat_id' => 222,
+            'status' => MaxChatStatus::Active,
+            'chat_type' => ChatType::Chat,
+            'last_activity_at' => now()->subDay(),
+        ]);
+
+        $this->dispatchCallback('chat');
+
+        $this->assertTrue(MaxChat::query()->sole()->last_activity_at->greaterThan(now()->subMinute()));
+    }
+
+    private function givenChatRows(MaxChatStatus $status = MaxChatStatus::Active): void
+    {
+        foreach ([111, 222] as $userId) {
+            MaxChat::query()->create([
+                'user_id' => $userId,
+                'chat_id' => 222,
+                'status' => $status,
+            ]);
+        }
+    }
+
+    /**
+     * @return list<MaxChatStatus>
+     */
+    private function statusesOfChat(int $chatId): array
+    {
+        return MaxChat::query()
+            ->where('chat_id', $chatId)
+            ->orderBy('user_id')
+            ->pluck('status')
+            ->all();
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function chatTypesOfChat(int $chatId): array
+    {
+        return MaxChat::query()
+            ->where('chat_id', $chatId)
+            ->orderBy('user_id')
+            ->pluck('chat_type')
+            ->all();
+    }
+
+    private function queueGetChatResponse(string $chatType, ?string $title = null): void
     {
         $this->httpClient->queue(new \GuzzleHttp\Psr7\Response(200, [], json_encode([
             'chat_id' => 222,
@@ -536,6 +815,7 @@ final class PersistMaxChatListenerTest extends TestCase
             'last_event_time' => 1000,
             'participants_count' => 1,
             'is_public' => false,
+            'title' => $title,
         ], JSON_THROW_ON_ERROR)));
     }
 
@@ -546,6 +826,7 @@ final class PersistMaxChatListenerTest extends TestCase
         ?int $userId = null,
         ?User $user = null,
         ?bool $isChannel = null,
+        ?string $title = null,
     ): void {
         $update = new Update(
             updateType: $type,
@@ -561,6 +842,7 @@ final class PersistMaxChatListenerTest extends TestCase
             chatId: $chatId,
             userId: $userId,
             isChannel: $isChannel,
+            title: $title,
         );
 
         $this->app->make(Dispatcher::class)->dispatch(new MaxUpdateReceived($update));
