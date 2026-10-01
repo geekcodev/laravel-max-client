@@ -72,10 +72,12 @@
 
 ```
 config/laravel-max-client.php      publishable-конфиг (echo php artisan vendor:publish)
-database/migrations/               миграции max_users/max_chats: подгружаются провайдером
+database/migrations/               миграции max_users/max_chats/max_chat_users: подгружаются провайдером
                                    (loadMigrationsFrom), публикация не нужна. Уже выполненные миграции
                                    НЕЛЬЗЯ править на месте — новые поля только отдельными аддитивными
-                                   миграциями, иначе у установленных проектов migrate отработает вхолостую
+                                   миграциями, иначе у установленных проектов migrate отработает вхолостую.
+                                   Реструктуризация (перенос данных) миграцией НЕ делается — это
+                                   php artisan max:upgrade, см. раздел 5
 examples/                          рабочие примеры (фасад, webhook-listener, PSR-18, webapp, long-polling)
 src/
   MaxServiceProvider.php           composition root: publish, bindings, регистрация роута/фасада/алиасов middleware,
@@ -84,14 +86,19 @@ src/
   Console/MaxSubscribeCommand.php  artisan max:subscribe: регистрация webhook-подписки (HTTPS + allowed_hosts)
   Console/MaxUnsubscribeCommand.php artisan max:unsubscribe: удаление webhook-подписки
   Console/MaxChatsRefreshCommand.php artisan max:chats:refresh: дозаполнение/перепроверка метаданных чатов
-  Console/MaxUpgradeCommand.php    artisan max:upgrade [--dry-run]: проверка/дополнение схемы реестров
-                                   (страховка, в штатном обновлении не нужен — хватает migrate)
+  Console/MaxUpgradeCommand.php    artisan max:upgrade: перенос реестра чатов на структуру v1.2.0
+                                   (--dry-run, --force, --rollback)
+  Services/MaxSchemaUpgrade.php    перенос данных и пересборка таблиц реестра (вызывается командой max:upgrade)
   WebApp/WebAppContext.php         верификация WebAppData мини-приложения (resolve/verify из Request и из строки)
   WebApp/ResolveWebAppIdentity.php middleware max.webapp: сессия user_id/chat_id + strict (403)
   Enums/MaxChatStatus.php        статусы реестра чатов (active/stopped/removed + label())
-  Models/MaxChat.php               модель реестра чатов max_chats (переопределяемая через chats.model)
+  Models/MaxChat.php               модель реестра чатов max_chats (одна строка на чат, переопределяемая
+                                   через chats.model): maxUsers(), chatUsers(), displayName()
+  Models/MaxChatUser.php           модель связей max_chat_users (chat_id + user_id, переопределяемая
+                                   через chats.chat_users_model)
   Listeners/PersistMaxChatListener.php upsert max_chats по bot_added/bot_started/bot_stopped/bot_removed,
-                                   title из chat_title_changed, дозаполнение метаданных, last_activity_at
+                                   upsert связей max_chat_users, title из chat_title_changed,
+                                   дозаполнение метаданных, last_activity_at
   Listeners/PersistMaxUserPhoneListener.php телефон из подтверждённого контакта (request_contact), выключен по умолчанию
   Services/MaxChatProfileService.php метаданные чата через getChat (общий кэш ответа), чаты реестра
   Services/MaxContactService.php   верификация контакта и извлечение телефона (ядро: ContactVerifier/ContactPhoneExtractor)
@@ -241,42 +248,84 @@ scripts/check-coverage.php         порог покрытия строк (по 
   `Support\Logger`, no-op при выключенном). `exclude_paths` (полный пропуск), `exclude_request_body_paths` /
   `exclude_response_body_paths` (без тела); `X-Request-ID` проксируется в ответ. `HandleMaxUpdateJob` логирует
   start/finish/failed (context: `update_type`, `user_id`, `chat_id`).
-- **Реестр чатов** (`max_chats`): реализация документированной практики MAX (getChats deprecated — chat_id хранить через
-  `bot_added`/`bot_started`). Миграция пакета (`loadMigrationsFrom`, публикация не нужна), модель `Models\MaxChat`
-  (переопределяемая `chats.model`, `MAX_CHATS_MODEL`), enum `Enums\MaxChatStatus`, слушатель
-  `Listeners\PersistMaxChatListener` (upsert по `bot_added`/`bot_started`/`bot_stopped`/`bot_removed`, пропуск при
-  `chat_id=null`; апдейты с `message`/`comment`/`callback` статус не меняют, но дозаполняют `chat_type` из
-  `Recipient::chatType` и обновляют `last_activity_at`). События `bot_*` несут сведения о боте, а не о пользователе,
-  поэтому при `userId === null` новая строка не заводится (`user_id` — часть уникального ключа), но `status`/
-  `last_activity_at`/`chat_type` обновляются во всех записях с этим `chat_id`
-  (`applyStatusToKnownRows`). Без этого `bot_removed` без `user` терялся и чат навсегда оставался `active`. Записей
-  нет — ничего не меняется. Реструктуризация `max_chats` в одну строку на чат (и отдельная
-  `max_chat_users`) отложена на отдельный релиз — см. `.agents/plans/`. Включается `chats.enabled`
+- **Реестр чатов** (`max_chats`, v1.2.0 — одна строка на чат): реализация документированной практики MAX (getChats
+  deprecated — chat_id хранить через `bot_added`/`bot_started`). Миграции пакета (`loadMigrationsFrom`, публикация не
+  нужна), модель `Models\MaxChat` (переопределяемая `chats.model`, `MAX_CHATS_MODEL`), pivot-модель
+  `Models\MaxChatUser` (`chats.chat_users_model`, `MAX_CHAT_USERS_MODEL`), enum `Enums\MaxChatStatus`, слушатель
+  `Listeners\PersistMaxChatListener`. Схема: `max_chats(chat_id PK, status, chat_type, метаданные,
+  last_activity_at)` + `max_chat_users(id uuid, chat_id, user_id UNIQUE-пара, status, last_activity_at)` +
+  `max_users(user_id PK)`. Первичные ключи реестров — натуральные, из идентификаторов MAX: у `max_chats` это `chat_id`
+  (строка одна на чат, суррогатного `id` нет), у `max_users` — `user_id`. Единственный суррогатный ключ — `id` строки
+  связи `max_chat_users`: идентификаторов от MAX у неё нет, модель использует `HasUuids` (uuid7), значение выдаёт
+  Eloquent, поэтому голый `insert` без `id` в `max_chat_users` не годится. `chat_id` объявляется **знаковым**
+  `bigInteger`: в MAX это `int64`, и у групп и каналов он отрицательный (`unsigned` на MySQL такой идентификатор
+  отверг бы; SQLite знаковость игнорирует, поэтому in-memory тесты этого не ловят — guard
+  `MaxMigrationsTest::testIdentifierColumnsAreDeclaredAsSignedBigInteger` проверяет объявление по исходникам миграций).
+  По той же причине знаковым объявлен и `user_id` (`max_users`, `max_chat_users`), хотя идентификаторы пользователей MAX
+  положительные: знаковая колонка принимает всё, что принимала `unsigned`, и заодно снимает вопрос на будущее. Отдельной
+  миграции ради `user_id` нет — и `chat_id`, и `user_id` чинит `MaxSchemaUpgrade` (пересборка `max_chats` и `change()`
+  в `max_users`), а в `rollback` сужение выполняется только если отрицательных значений в базе нет.
+  `MaxChat` объявляет `$primaryKey = 'chat_id'`,
+  `$incrementing = false` (свойство публичное), `$keyType = 'int'`. `max_chat_users` — реестр
+  зафиксированных взаимодействий с ботом, а не состав чата. Связи моделей:
+  `MaxChat::maxUsers()` (hasManyThrough), `MaxChat::chatUsers()` (hasMany), `MaxUser::maxChats()` (hasManyThrough,
+  публичное имя сохранено), `MaxUser::chatLinks()`; `MaxChat::maxUser()` удалён в v1.2.0 (BC). Колонка `user_id` есть и в
+  `max_users`, и в `max_chat_users` — в выборках указывать таблицу (`pluck('max_users.user_id')`).
+  Слушатель: upsert строки чата по `bot_added`/`bot_started`/`bot_stopped`/`bot_removed` (пропуск при `chat_id=null`),
+  связь заводится только при известном `userId`; апдейты с `message`/`comment`/`callback` статус не меняют, но
+  дозаполняют `chat_type` из `Recipient::chatType` и обновляют `last_activity_at`. События `bot_*` несут сведения о боте,
+  а не о пользователе, поэтому при `userId === null` строка чата всё равно заводится и обновляется (раньше она терялась,
+  и чат навсегда оставался `active`), но связь не создаётся — о ком речь, неизвестно. Включается `chats.enabled`
   (`MAX_CHATS_ENABLED`); регистрация слушателя на `MaxUpdateReceived` — в `MaxServiceProvider::boot()`. Это
   инфраструктура — бизнес-обработка остаётся в приложении.
 - **Метаданные чата** (`Services\MaxChatProfileService`): название, описание, ссылка, иконка приходят **только** из
   `getChat()` — апдейты `bot_added`/`bot_started` несут лишь `chat_id`/`user`/`is_channel`, а название приходит
-  отдельным `chat_title_changed`. Singleton с кэшем ответа `getChat` на время работы (`forgetChatCache()` — сброс). Один
-  ответ пишется во **все** записи реестра с этим `chat_id` (в группе по записи на участника: 50 участников — один
-  запрос); пустой ответ не затирает известное значение. `chat_type` дозаполняется только при `null`. API:
-  `sync(int): bool`, `ensureMetadata(int): bool`, `inheritKnownMetadata(int): bool`, `hasKnownTitle(int): bool`,
-  `refresh(int|list<int>|null): bool`, `pendingChatIds(...)` (исключает чаты свежее `chats.title_check_interval`),
-  `chatTypeFor(int): ?ChatType`, `activeChatIds(): list<int>`. Вызов `fetch` при `bot_added`/`bot_started` — только при
-  `chats.fetch_metadata` (`MAX_CHATS_FETCH_METADATA`, default true). Правило в три состояния на `chat_id`:
-  название неизвестно ни в одной записи → `getChat`, ответ пишется всем; название есть, но запись новая → наследование
-  без запроса (`inheritKnownMetadata`); заполнены все → ничего. Наследование обязательно: проверка «есть ли заполненная
-  строка» оставляла всех участников после первого без метаданных, а проверка «заполнены ли все» дала бы по одному
-  одинаковому запросу на участника. как проверенные недавно.
+  отдельным `chat_title_changed`. Singleton с кэшем ответа `getChat` на время работы (`forgetChatCache()` — сброс).
+  Строка чата одна, поэтому ответ пишется в неё: запрос на чат один независимо от числа участников; пустой ответ не
+  затирает известное значение. `chat_type` дозаполняется только при `null`. API: `sync(int): bool`,
+  `ensureMetadata(int): bool`, `hasKnownTitle(int): bool`, `refresh(int|list<int>|null): bool`, `pendingChatIds(...)`
+  (исключает чаты свежее `chats.chat_check_interval`), `chatTypeFor(int): ?ChatType`, `activeChatIds(): list<int>`.
+  Интервал перепроверки переименован в v1.2.0, прежние имена совместимы: `Config::chatsChatCheckInterval()` читает
+  прежний ключ конфига `chats.title_check_interval`, если нового нет вовсе, а сам конфиг отдаёт прежнюю переменную
+  `MAX_CHATS_TITLE_CHECK_INTERVAL` (v1.1.4), если новая не задана. Пустое значение переменной — «не задано» (так
+  заполнен `.env.example`), явный `0` — значение и прежнее имя не переопределяет. Читать `env()` можно только в
+  конфиге (A05), поэтому фолбэк переменной живёт в `config/laravel-max-client.php`, а не в `Support\Config`.
+  `inheritKnownMetadata()` удалён в v1.2.0: с одной строкой на чат наследовать нечего. Вызов `fetch` при
+  `bot_added`/`bot_started` — только при `chats.fetch_metadata` (`MAX_CHATS_FETCH_METADATA`, default true). Правило в два
+  состояния на `chat_id`: название неизвестно → `getChat`; название известно → ничего (иначе 50 участников дали бы
+  50 одинаковых запросов).
 - **Правило миграций**: новая колонка — только новая миграция, никогда не правка уже выполненной. Правка
   `create_max_chats_table` на месте у установленного проекта не применится (файл помечен выполненным), и
-  `php artisan migrate` молча ничего не добавит. Guard: `tests/Feature/MaxMigrationsUpgradeTest.php`
-  (`testCreateMigrationsStayFrozen`, `testNewColumnsAreDeclaredInAdditiveMigrationsOnly`).
-- **Обновление после обновления пакета**: обычного `php artisan migrate` достаточно — аддитивные миграции видны как
-  невыполненные. `MaxUpgradeCommand` (`php artisan max:upgrade [--dry-run]`) — страховка для рассинхронизации (ручные
-  правки, ранее опубликованные миграции): идемпотентно добавляет недостающие колонки/индексы, ничего не удаляет.
+  `php artisan migrate` молча ничего не добавит. Guard: `tests/Feature/MaxMigrationsTest.php`
+  (`testAdditiveMigrationsAreGone`, `testSchemaRestructureIsNotAMigration`) и
+  `tests/Feature/MaxSchemaUpgradeTest.php` (сценарии обновления старой формы, слияние дублей, идемпотентность, откат).
+- **Обновление после обновления пакета**: два шага — `php artisan migrate` (создаёт таблицу связей, единственная новая
+  миграция `0001_01_01_000003_create_max_chat_users_table`) и `php artisan max:upgrade` (перенос данных). Чистая
+  установка обходится одним `migrate`. Между шагами схема неполна: `max_chats` ещё в прежней форме, а модель уже
+  ждёт новую, поэтому порядок обязателен.
+- **Перенос данных вне миграций**: реструктуризацию выполняет `MaxSchemaUpgrade` (вызывается из
+  `Console\MaxUpgradeCommand`), а не миграция — так владелец пакета решил в v1.2.0: перед изменением схемы виден
+  план (`--dry-run`), результат откатывается (`--rollback`), а у потребителя не появляется лишний файл в таблице
+  `migrations`. Команда идемпотентна (признак прежней формы — колонка `max_chats.user_id`), без таблицы связей
+  завершается ошибкой с указанием сначала выполнить `migrate`, без подтверждения в неинтерактивном режиме
+  отказывается работать, если не задан `--force`. Перенос: пары в `max_chat_users` (до `dropColumn(user_id)`),
+  слияние дублей чата (первые непустые метаданные, `max(last_activity_at)`, `min(created_at)`, статус по приоритету
+  `removed > stopped > active`), снятие старого UNIQUE перед `dropColumn`. Финальный шаг — **пересборка таблицы**, а
+  не `alter`: первичный ключ сменить на месте нельзя (SQLite отклоняет удаление колонки ключа — «cannot drop PRIMARY
+  KEY column» — и молча игнорирует `primary()` вне `create`; MySQL требует отдельных команд), поэтому создаётся
+  временная таблица в целевой форме, строки копируются одним `insert … select`, таблица переименовывается, а индексы
+  переименовываются в канонические имена (иначе в базе остаются `max_chats_rebuild_*`). Тем же приёмом в
+  `rollback()` возвращается счётчик `id` и `user_id` (nullable: чат без пар получает строку с `NULL`, терять факт
+  чата хуже, чем падать на откате) — то есть откат симметричен, односторонних шагов нет. Знаковость идентификаторов у
+  установки до v1.2.0 чинит тот же `MaxSchemaUpgrade`: `chat_id` попутно с пересборкой, а `max_users` расширяется
+  шагом `change()` на месте без переобъявления первичного ключа (`MODIFY COLUMN` в MySQL индексы не снимает; в
+  `rollback` сужение выполняется только если отрицательных значений в базе нет). Тем же приёмом команда возвращает
+  `max_users.phone_verified_at`, если колонки нет: её создавала аддитивная миграция v1.1.4, а у установки v1.1.3 её
+  не будет, хотя `PersistMaxUserPhoneListener` пишет отметку безусловно (без возврата запись телефона падала бы с
+  «no such column»); идемпотентно, повторное объявление упало бы с дублирующимся именем. Ручные правки схемы
+  команда не закрывает, поэтому отдельной страховки нет.
 - **Телефон из контакта** (`Services\MaxContactService` + `Listeners\PersistMaxUserPhoneListener`): апдейт
-  `request_contact` (вложение типа contact) содержит телефон, но в `max_users` не попадает. Отдельного флага включения
-  нет: контакт формируется платформой из номера аккаунта отправителя (регистрация в MAX возможна на один номер), поэтому
+  `request_contact` (вложение типа contact) содержит телефон, но в `max_users` не попадает. Флага включения нет: контакт формируется платформой из номера аккаунта отправителя (регистрация в MAX возможна на один номер), поэтому
   это номер самого пользователя; пересланный контакт приходит файлом и в этот путь не попадает. Телефон пишется в
   `max_users.phone`, отметка — `phone_verified_at`, запись создаётся при отсутствии. Проверка подписи и разбор vCard —
   только ядром (`ContactVerifier`, `ContactPhoneExtractor`); телефон и `vcf_info` в логи не попадают. Отличающийся номер
@@ -287,8 +336,9 @@ scripts/check-coverage.php         порог покрытия строк (по 
 - **Профиль пользователя** (`Services\MaxUserProfileService`): наполнение `max_users` полноценным профилем (аватар
   `avatar_url`/`full_avatar_url`, `name`, `description`) через ядро `getChatMembers` (в апдейтах аватар не приходит).
   Singleton в контейнере (зависимости `ApiClient`, `Config`, `Logger`). API: `refresh(int|list<int>): bool`
-  (chat_id из активных `max_chats`, батчинг userIds по `users.profile_batch_size`, флаг
-  `users.profile_from_active_chats` отключает резолв из реестра), `upsertFromMember(ChatMember): MaxUser`
+  (активные `chat_id` из `max_chats` + пользователи из `max_chat_users`, батчинг userIds по
+  `users.profile_batch_size`, флаг `users.profile_from_active_chats` отключает резолв из реестра),
+  `upsertFromMember(ChatMember): MaxUser`
   (`updateOrCreate`, пишет `profile_checked_at`), `ensureAvatar(MaxUser, ?int $chatId = null): bool` (пропуск при уже
   заполненном аватаре; при `users.profile_check_interval` > 0 — периодическая перепроверка по `profile_checked_at` в
   секундах (по умолчанию 86400 — раз в сутки); явный `chatId` работает без реестра). «Когда вызывать» — ответственность
@@ -466,6 +516,9 @@ source .env && docker run --rm --network host \
     ядра, иначе легко сослаться на устаревший constraint.
 17. После содержательной сессии — файл в `.agents/journals/sessions/` и строка в `JOURNAL.md` (раздел 4.1), иначе
     решения и результаты Gate теряются вместе с локальным каталогом.
+18. Идентификаторы в MAX бывают **отрицательными** (`chat_id` у групп и каналов) — колонки должны быть знаковыми.
+    `unsignedBigInteger` отверг бы такой идентификатор на MySQL, а на SQLite это не воспроизводится: знаковость там
+    игнорируется, поэтому объявление приходится проверять по исходникам миграций.
 
 ## 10. Чек-лист «production-grade» (самооценка при доработках)
 

@@ -101,6 +101,39 @@ final class LogMaxRequestsMiddlewareTest extends TestCase
         $this->assertSame('***', $responseBody['api_key']);
     }
 
+    /**
+     * Апдейт request_contact несёт телефон и содержимое vCard. Тело по умолчанию не
+     * логируется, но при явном включении персональные данные маскируются (A09).
+     */
+    public function testMasksContactPhoneAndVcfInfo(): void
+    {
+        $this->enableLogging(['log_request_body' => true]);
+
+        $request = Request::create(
+            '/max/webhook',
+            'POST',
+            [],
+            [],
+            [],
+            [],
+            json_encode([
+                'update_type' => 'message_created',
+                'message' => ['attachment' => [
+                    'type' => 'contact',
+                    'vcf_info' => 'BEGIN:VCARD\nFN:Ivan\nTEL:+79990000000\nEND:VCARD',
+                    'contact' => ['phone' => '+79990000000'],
+                ]],
+            ], JSON_THROW_ON_ERROR),
+        );
+
+        $this->handle(static fn (): Response => new Response('', 200), $request);
+
+        $body = $this->logged[0][2]['body'];
+        $this->assertIsArray($body);
+        $this->assertSame('***', $body['message']['attachment']['vcf_info']);
+        $this->assertSame('***', $body['message']['attachment']['contact']['phone']);
+    }
+
     public function testBodyIsNotLoggedByDefault(): void
     {
         $this->enableLogging();

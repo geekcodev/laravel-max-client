@@ -95,7 +95,7 @@ final class MaxChatsRefreshCommand extends Command
         foreach ($raw as $part) {
             $id = filter_var($part, FILTER_VALIDATE_INT);
 
-            if ($id === false || $id <= 0) {
+            if ($id === false || $id === 0) {
                 $this->error("Некорректный chat_id: {$part}");
 
                 return null;

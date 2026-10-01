@@ -17,17 +17,25 @@ use Illuminate\Support\Facades\Log;
 /**
  * Реестр чатов: upsert max_chats по апдейтам bot_added/bot_started/
  * bot_stopped/bot_removed (getChats deprecated — chat_id хранить через
- * подписку). При наличии user в апдейте — upsert в max_users.
+ * подписку) и связь пользователей в max_chat_users. При наличии user в апдейте —
+ * upsert в max_users.
+ *
+ * max_chats хранит одну строку на чат, а не на пару «пользователь + чат»:
+ * события bot_* — это события о боте в чате, а не о пользователе, поэтому user
+ * в них может не прийти. Раньше колонка user_id была частью уникального ключа и
+ * новая строка без user не заводилась, из-за чего bot_removed без user терялся.
+ * Теперь статус пишется всегда, а пользователь без user просто не попадает в
+ * max_chat_users.
+ *
  * chat_type определяется из Recipient->chatType (message/comment/callback),
  * isChannel (lifecycle), либо getChat() API (fallback для bot_added/bot_started).
- * Message/comment/callback-апдейты статус не меняют и чат не создают — только
- * дозаполняют chat_type у существующего чата, если он ещё не известен, и
- * двигают last_activity_at.
+ * Message/comment/callback-апдейты статус не меняют — только дозаполняют
+ * chat_type у существующего чата и двигают last_activity_at.
  *
  * Название группы или канала апдейтами bot_added/bot_started не приходит, поэтому
  * для них метаданные запрашиваются через MaxChatProfileService (одним запросом
- * на все записи чата). Событие chat_title_changed приходит уже с готовым
- * title — для него запрос не нужен.
+ * на чат). Событие chat_title_changed приходит уже с готовым title — для него
+ * запрос не нужен.
  *
  * Включается config('laravel-max-client.chats.enabled').
  *
@@ -71,62 +79,6 @@ final class PersistMaxChatListener
             return;
         }
 
-        $user = $update->user;
-        $userId = $user !== null ? $user->userId : $update->userId;
-
-        if ($userId === null) {
-            $this->applyStatusToKnownRows($update, $status);
-
-            return;
-        }
-
-        if ($update->chatId === null) {
-            Log::warning('MAX chat update without chat_id skipped.', [
-                'update_type' => $update->updateType->value,
-                'user_id' => $userId,
-            ]);
-
-            return;
-        }
-
-        $this->upsertUser($user, $userId);
-
-        $chatModel = $this->config->chatsModel();
-
-        $data = [
-            'status' => $status,
-            'last_activity_at' => now(),
-        ];
-
-        $chatType = $this->resolveChatType($update);
-
-        if ($chatType !== null) {
-            $data['chat_type'] = $chatType;
-        }
-
-        $chatModel::query()->updateOrCreate(
-            [
-                'user_id' => $userId,
-                'chat_id' => $update->chatId,
-            ],
-            $data,
-        );
-
-        $this->syncMetadataIfNeeded($update);
-    }
-
-    /**
-     * bot_added/bot_started/bot_stopped/bot_removed — события о боте в чате, а не
-     * о пользователе, поэтому user в них может не прийти. Реестр хранит по
-     * строке на участника, и без user новую строку не завести, зато состояние
-     * чата известно: обновляем все записи с этим chat_id. Иначе bot_removed без
-     * user терялся, и чат навсегда оставался active.
-     *
-     * Записей нет — ничего не делаем: о таком чате мы не знали и узнавать его
-     * отсюда нечем.
-     */
-    private function applyStatusToKnownRows(Update $update, MaxChatStatus $status): void
-    {
         $chatId = $update->chatId;
 
         if ($chatId === null) {
@@ -137,8 +89,27 @@ final class PersistMaxChatListener
             return;
         }
 
-        $chatModel = $this->config->chatsModel();
+        $user = $update->user;
+        $userId = $user !== null ? $user->userId : $update->userId;
 
+        if ($user !== null && $userId !== null) {
+            $this->upsertUser($user, $userId);
+        }
+
+        $this->upsertChat($update, $chatId, $status);
+
+        if ($userId !== null) {
+            $this->upsertChatLink($chatId, $userId, $status);
+        }
+
+        $this->syncMetadataIfNeeded($update);
+    }
+
+    /**
+     * Одна строка на чат: создаём или обновляем по chat_id.
+     */
+    private function upsertChat(Update $update, int $chatId, MaxChatStatus $status): void
+    {
         $data = [
             'status' => $status,
             'last_activity_at' => now(),
@@ -150,9 +121,29 @@ final class PersistMaxChatListener
             $data['chat_type'] = $chatType;
         }
 
-        $chatModel::query()
-            ->where('chat_id', $chatId)
-            ->update($data);
+        $this->config->chatsModel()::query()->updateOrCreate(
+            ['chat_id' => $chatId],
+            $data,
+        );
+    }
+
+    /**
+     * Связь «чат + пользователь»: апдейты bot_* — это события о боте в чате, а не
+     * о пользователе, поэтому user в них может не прийти. Без user связь не
+     * заводим: о взаимодействии этого пользователя с ботом мы ничего не знаем.
+     */
+    private function upsertChatLink(int $chatId, int $userId, MaxChatStatus $status): void
+    {
+        $this->config->chatUsersModel()::query()->updateOrCreate(
+            [
+                'chat_id' => $chatId,
+                'user_id' => $userId,
+            ],
+            [
+                'status' => $status,
+                'last_activity_at' => now(),
+            ],
+        );
     }
 
     private function upsertUser(?User $user, int $userId): void
@@ -194,7 +185,9 @@ final class PersistMaxChatListener
 
     /**
      * Апдейт активности: дозаполняет chat_type у существующего чата и двигает
-     * last_activity_at. Чат не создаёт и статус не меняет.
+     * last_activity_at. Чат не создаёт и статус не меняет. Связь пользователя,
+     * если он пришёл, обновляется: апдейт активности — это как раз факт
+     * взаимодействия пользователя с ботом.
      */
     private function touchExistingChat(Update $update): void
     {
@@ -205,23 +198,41 @@ final class PersistMaxChatListener
         }
 
         $chatModel = $this->config->chatsModel();
-        $query = $chatModel::query()->where('chat_id', $chatId);
 
         $chatType = $this->resolveChatType($update);
 
         if ($chatType !== null) {
-            $query->whereNull('chat_type')->update(['chat_type' => $chatType]);
+            $chatModel::query()
+                ->where('chat_id', $chatId)
+                ->whereNull('chat_type')
+                ->update(['chat_type' => $chatType]);
         }
 
         $chatModel::query()
             ->where('chat_id', $chatId)
             ->update(['last_activity_at' => now()]);
+
+        $user = $update->user;
+        $userId = $user !== null ? $user->userId : $update->userId;
+
+        if ($user === null || $userId === null) {
+            return;
+        }
+
+        $this->upsertUser($user, $userId);
+
+        if ($chatModel::query()->where('chat_id', $chatId)->exists()) {
+            $this->config->chatUsersModel()::query()->updateOrCreate(
+                ['chat_id' => $chatId, 'user_id' => $userId],
+                ['last_activity_at' => now()],
+            );
+        }
     }
 
     /**
      * Название из события chat_title_changed: запрос к API не нужен, значение
-     * пишется во все записи чата (в группе их по одной на участника). Пустой
-     * title игнорируется, чтобы не затереть уже известное название.
+     * пишется в строку чата. Пустой title игнорируется, чтобы не затереть уже
+     * известное название.
      */
     private function applyTitleFromUpdate(Update $update): void
     {
@@ -238,7 +249,7 @@ final class PersistMaxChatListener
             ->where('chat_id', $chatId)
             ->update([
                 'title' => $title,
-                'title_checked_at' => now(),
+                'chat_checked_at' => now(),
             ]);
     }
 

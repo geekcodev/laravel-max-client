@@ -7,6 +7,7 @@ namespace GeekCo\LaravelMaxClient\Tests\Unit\Console;
 use GeekCo\LaravelMaxClient\Enums\MaxChatStatus;
 use GeekCo\LaravelMaxClient\MaxServiceProvider;
 use GeekCo\LaravelMaxClient\Models\MaxChat;
+use GeekCo\LaravelMaxClient\Models\MaxChatUser;
 use GeekCo\LaravelMaxClient\Tests\Support\MockHttpClient;
 use GeekCo\LaravelMaxClient\Tests\TestCase;
 use GeekCo\MaxPhpClient\Enum\ChatType;
@@ -36,9 +37,14 @@ final class MaxChatsRefreshCommandTest extends TestCase
 
         $this->assertSame(0, Artisan::call('max:chats:refresh'));
 
-        // Один запрос на chat_id, несмотря на две записи реестра у 222.
+        // Один запрос на chat_id: в реестре строка чата одна, два участника
+        // живут в max_chat_users и на количество запросов не влияют.
         $this->assertSame(1, $http->callCount);
-        $this->assertSame(2, MaxChat::query()->where('title', 'Группа')->count());
+        $this->assertSame(1, MaxChat::query()->where('title', 'Группа')->count());
+        $this->assertSame(
+            [111, 112],
+            MaxChatUser::query()->where('chat_id', 222)->orderBy('user_id')->pluck('user_id')->all(),
+        );
         $this->assertNull(MaxChat::query()->where('chat_id', 333)->sole()->title);
     }
 
@@ -79,10 +85,19 @@ final class MaxChatsRefreshCommandTest extends TestCase
         $this->assertStringContainsString('Некорректный chat_id', Artisan::output());
     }
 
-    public function testRejectsNonPositiveChatId(): void
+    public function testRejectsZeroChatId(): void
     {
         $this->assertSame(2, Artisan::call('max:chats:refresh', ['--chat' => ['0']]));
         $this->assertStringContainsString('Некорректный chat_id', Artisan::output());
+    }
+
+    /**
+     * Отрицательный идентификатор — это группа или канал, а не опечатка.
+     */
+    public function testAcceptsNegativeChatId(): void
+    {
+        $this->assertSame(0, Artisan::call('max:chats:refresh', ['--chat' => ['-79032376695376']]));
+        $this->assertStringNotContainsString('Некорректный chat_id', Artisan::output());
     }
 
     public function testReportsWhenThereIsNothingToSync(): void
@@ -101,12 +116,12 @@ final class MaxChatsRefreshCommandTest extends TestCase
      */
     public function testRecentlyCheckedChatsAreSkippedWhenIntervalIsSet(): void
     {
-        config()->set(MaxServiceProvider::CONFIG_KEY . '.chats.title_check_interval', 3600);
+        config()->set(MaxServiceProvider::CONFIG_KEY . '.chats.chat_check_interval', 3600);
 
         $this->makeChat(111, 222);
         $this->makeChat(111, 333);
 
-        MaxChat::query()->where('chat_id', 222)->update(['title_checked_at' => now()]);
+        MaxChat::query()->where('chat_id', 222)->update(['chat_checked_at' => now()]);
 
         $http = $this->httpWith($this->chatResponse(333, 'chat', ['title' => 'Свежий']));
 
@@ -122,11 +137,11 @@ final class MaxChatsRefreshCommandTest extends TestCase
 
     public function testStaleChatsAreRefreshedEvenWithIntervalSet(): void
     {
-        config()->set(MaxServiceProvider::CONFIG_KEY . '.chats.title_check_interval', 3600);
+        config()->set(MaxServiceProvider::CONFIG_KEY . '.chats.chat_check_interval', 3600);
 
         $this->makeChat(111, 222);
         MaxChat::query()->where('chat_id', 222)->update([
-            'title_checked_at' => now()->subDays(2),
+            'chat_checked_at' => now()->subDays(2),
         ]);
 
         $http = $this->httpWith($this->chatResponse(222, 'chat', ['title' => 'Обновлённое']));
@@ -139,7 +154,7 @@ final class MaxChatsRefreshCommandTest extends TestCase
 
     public function testNeverCheckedChatIsNotSkippedByInterval(): void
     {
-        config()->set(MaxServiceProvider::CONFIG_KEY . '.chats.title_check_interval', 3600);
+        config()->set(MaxServiceProvider::CONFIG_KEY . '.chats.chat_check_interval', 3600);
 
         $this->makeChat(111, 222);
 
@@ -153,10 +168,10 @@ final class MaxChatsRefreshCommandTest extends TestCase
 
     public function testZeroIntervalAlwaysRefreshes(): void
     {
-        config()->set(MaxServiceProvider::CONFIG_KEY . '.chats.title_check_interval', 0);
+        config()->set(MaxServiceProvider::CONFIG_KEY . '.chats.chat_check_interval', 0);
 
         $this->makeChat(111, 222);
-        MaxChat::query()->where('chat_id', 222)->update(['title_checked_at' => now()]);
+        MaxChat::query()->where('chat_id', 222)->update(['chat_checked_at' => now()]);
 
         $http = $this->httpWith($this->chatResponse(222, 'chat', ['title' => 'Группа']));
 
@@ -176,7 +191,7 @@ final class MaxChatsRefreshCommandTest extends TestCase
 
         $this->assertSame(0, Artisan::call('max:chats:refresh'));
 
-        $this->assertNotNull(MaxChat::query()->sole()->title_checked_at);
+        $this->assertNotNull(MaxChat::query()->sole()->chat_checked_at);
     }
 
     public function testDeduplicatesRepeatedChatIds(): void
@@ -192,12 +207,17 @@ final class MaxChatsRefreshCommandTest extends TestCase
 
     private function makeChat(int $userId, int $chatId, MaxChatStatus $status = MaxChatStatus::Active): MaxChat
     {
-        return MaxChat::query()->create([
-            'user_id' => $userId,
-            'chat_id' => $chatId,
-            'status' => $status,
-            'chat_type' => ChatType::Chat,
-        ]);
+        $chat = MaxChat::query()->firstOrCreate(
+            ['chat_id' => $chatId],
+            ['status' => $status, 'chat_type' => ChatType::Chat],
+        );
+
+        MaxChatUser::query()->updateOrCreate(
+            ['chat_id' => $chatId, 'user_id' => $userId],
+            ['status' => $status],
+        );
+
+        return $chat;
     }
 
     private function httpWith(Response ...$responses): MockHttpClient

@@ -8,7 +8,9 @@ use GeekCo\LaravelMaxClient\MaxServiceProvider;
 use GeekCo\LaravelMaxClient\Models\MaxChat;
 use GeekCo\LaravelMaxClient\Models\MaxUser;
 use GeekCo\LaravelMaxClient\Support\Config;
+use GeekCo\LaravelMaxClient\Models\MaxChatUser;
 use GeekCo\LaravelMaxClient\Tests\Support\CustomMaxChat;
+use GeekCo\LaravelMaxClient\Tests\Support\CustomMaxChatUser;
 use GeekCo\LaravelMaxClient\Tests\TestCase;
 
 final class ConfigTest extends TestCase
@@ -188,6 +190,25 @@ final class ConfigTest extends TestCase
         $this->assertSame(MaxUser::class, $this->config()->usersModel());
     }
 
+    public function testChatUsersModelDefaultsToMaxChatUser(): void
+    {
+        $this->assertSame(MaxChatUser::class, $this->config()->chatUsersModel());
+    }
+
+    public function testChatUsersModelReturnsCustomSubclass(): void
+    {
+        $this->app['config']->set(MaxServiceProvider::CONFIG_KEY . '.chats.chat_users_model', CustomMaxChatUser::class);
+
+        $this->assertSame(CustomMaxChatUser::class, $this->config()->chatUsersModel());
+    }
+
+    public function testChatUsersModelFallsBackWhenNotChatUserSubclass(): void
+    {
+        $this->app['config']->set(MaxServiceProvider::CONFIG_KEY . '.chats.chat_users_model', \stdClass::class);
+
+        $this->assertSame(MaxChatUser::class, $this->config()->chatUsersModel());
+    }
+
     public function testProfileDefaults(): void
     {
         $config = $this->config();
@@ -227,6 +248,64 @@ final class ConfigTest extends TestCase
         $this->app['config']->set(MaxServiceProvider::CONFIG_KEY . '.chats.model', \stdClass::class);
 
         $this->assertSame(MaxChat::class, $this->config()->chatsModel());
+    }
+
+    public function testChatsChatCheckIntervalDefaultsToZero(): void
+    {
+        $this->assertSame(0, $this->config()->chatsChatCheckInterval());
+    }
+
+    public function testChatsChatCheckIntervalIsRead(): void
+    {
+        $this->app['config']->set(MaxServiceProvider::CONFIG_KEY . '.chats.chat_check_interval', 3600);
+
+        $this->assertSame(3600, $this->config()->chatsChatCheckInterval());
+    }
+
+    /**
+     * Опубликованный до v1.2.0 конфиг: в секции chats нет ключа
+     * chat_check_interval, есть прежний title_check_interval. Молча потерять
+     * заданный там интервал нельзя.
+     */
+    public function testChatsChatCheckIntervalFallsBackToLegacyKey(): void
+    {
+        $this->useLegacyChatsConfig();
+
+        $this->assertSame(600, $this->config()->chatsChatCheckInterval());
+    }
+
+    public function testChatsChatCheckIntervalPrefersNewKeyOverLegacy(): void
+    {
+        $this->useLegacyChatsConfig();
+        $this->app['config']->set(MaxServiceProvider::CONFIG_KEY . '.chats.chat_check_interval', 60);
+
+        $this->assertSame(60, $this->config()->chatsChatCheckInterval());
+    }
+
+    /**
+     * Явно выставленный ноль в новом ключе — тоже значение: он отключает
+     * периодическую перепроверку и не должен подменяться старым интервалом.
+     */
+    public function testChatsChatCheckIntervalKeepsExplicitZeroOverLegacy(): void
+    {
+        $this->useLegacyChatsConfig();
+        $this->app['config']->set(MaxServiceProvider::CONFIG_KEY . '.chats.chat_check_interval', 0);
+
+        $this->assertSame(0, $this->config()->chatsChatCheckInterval());
+    }
+
+    /**
+     * Конфиг, опубликованный до v1.2.0: в секции chats нового ключа нет вовсе.
+     */
+    private function useLegacyChatsConfig(): void
+    {
+        $key = MaxServiceProvider::CONFIG_KEY . '.chats';
+        $chats = (array) $this->app['config']->get($key);
+
+        unset($chats['chat_check_interval']);
+        $chats['title_check_interval'] = 600;
+
+        $this->app['config']->set($key, $chats);
     }
 
     private function config(): Config

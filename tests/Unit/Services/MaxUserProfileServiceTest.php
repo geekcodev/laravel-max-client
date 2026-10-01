@@ -7,6 +7,7 @@ namespace GeekCo\LaravelMaxClient\Tests\Unit\Services;
 use GeekCo\LaravelMaxClient\Enums\MaxChatStatus;
 use GeekCo\LaravelMaxClient\MaxServiceProvider;
 use GeekCo\LaravelMaxClient\Models\MaxChat;
+use GeekCo\LaravelMaxClient\Models\MaxChatUser;
 use GeekCo\LaravelMaxClient\Models\MaxUser;
 use GeekCo\LaravelMaxClient\Services\MaxUserProfileService;
 use GeekCo\LaravelMaxClient\Tests\Support\MockHttpClient;
@@ -46,11 +47,7 @@ final class MaxUserProfileServiceTest extends TestCase
 
     public function testRefreshWithStoppedChatSkipsApiCall(): void
     {
-        MaxChat::create([
-            'user_id' => 111,
-            'chat_id' => 222,
-            'status' => MaxChatStatus::Stopped,
-        ]);
+        $this->givenChatLink(111, 222, MaxChatStatus::Stopped);
 
         $this->assertFalse($this->service->refresh(111));
         $this->assertSame(0, $this->http->callCount);
@@ -58,12 +55,7 @@ final class MaxUserProfileServiceTest extends TestCase
 
     public function testRefreshWithActiveChatFetchesAndPersistsAvatar(): void
     {
-        MaxChat::create([
-            'user_id' => 111,
-            'chat_id' => 222,
-            'status' => MaxChatStatus::Active,
-            'chat_type' => ChatType::Chat,
-        ]);
+        $this->givenChatLink(111, 222);
         $this->http->queue($this->chatMemberResponse(111));
 
         $this->assertTrue($this->service->refresh(111));
@@ -82,8 +74,8 @@ final class MaxUserProfileServiceTest extends TestCase
 
     public function testRefreshGathersUserIdsFromMultipleChats(): void
     {
-        MaxChat::create(['user_id' => 111, 'chat_id' => 222, 'status' => MaxChatStatus::Active, 'chat_type' => ChatType::Chat]);
-        MaxChat::create(['user_id' => 222, 'chat_id' => 333, 'status' => MaxChatStatus::Active, 'chat_type' => ChatType::Chat]);
+        $this->givenChatLink(111, 222);
+        $this->givenChatLink(222, 333);
         $this->http->queue($this->chatMemberResponse(111));
         $this->http->queue($this->chatMemberResponse(222));
 
@@ -99,8 +91,18 @@ final class MaxUserProfileServiceTest extends TestCase
 
     public function testRefreshBatchesUserIdsByProfileBatchSize(): void
     {
+        MaxChat::query()->create([
+            'chat_id' => 222,
+            'status' => MaxChatStatus::Active,
+            'chat_type' => ChatType::Chat,
+        ]);
+
         for ($id = 1; $id <= 120; ++$id) {
-            MaxChat::create(['user_id' => $id, 'chat_id' => 222, 'status' => MaxChatStatus::Active, 'chat_type' => ChatType::Chat]);
+            MaxChatUser::query()->create([
+                'chat_id' => 222,
+                'user_id' => $id,
+                'status' => MaxChatStatus::Active,
+            ]);
         }
         $this->http->queue($this->emptyChatMembersResponse());
         $this->http->queue($this->emptyChatMembersResponse());
@@ -123,7 +125,7 @@ final class MaxUserProfileServiceTest extends TestCase
     public function testRefreshSkipsWhenProfileFromActiveChatsDisabled(): void
     {
         $this->app['config']->set(MaxServiceProvider::CONFIG_KEY . '.users.profile_from_active_chats', false);
-        MaxChat::create(['user_id' => 111, 'chat_id' => 222, 'status' => MaxChatStatus::Active, 'chat_type' => ChatType::Chat]);
+        $this->givenChatLink(111, 222);
 
         $this->assertFalse($this->service->refresh(111));
         $this->assertSame(0, $this->http->callCount);
@@ -243,7 +245,7 @@ final class MaxUserProfileServiceTest extends TestCase
             'full_avatar_url' => 'https://avatars.example/old.jpg',
             'profile_checked_at' => now()->subSeconds(7200),
         ]);
-        MaxChat::create(['user_id' => 111, 'chat_id' => 222, 'status' => MaxChatStatus::Active, 'chat_type' => ChatType::Chat]);
+        $this->givenChatLink(111, 222);
         $this->http->queue($this->chatMemberResponse(111));
 
         $this->assertTrue($this->service->ensureAvatar(MaxUser::findOrFail(111)));
@@ -264,7 +266,7 @@ final class MaxUserProfileServiceTest extends TestCase
             'avatar_url' => 'https://avatars.example/111_s.jpg',
             'full_avatar_url' => 'https://avatars.example/111.jpg',
         ]);
-        MaxChat::create(['user_id' => 111, 'chat_id' => 222, 'status' => MaxChatStatus::Active, 'chat_type' => ChatType::Chat]);
+        $this->givenChatLink(111, 222);
         $this->http->queue($this->chatMemberResponse(111));
 
         $this->assertTrue($this->service->ensureAvatar(MaxUser::findOrFail(111)));
@@ -278,7 +280,7 @@ final class MaxUserProfileServiceTest extends TestCase
             'first_name' => 'Иван',
             'is_bot' => false,
         ]);
-        MaxChat::create(['user_id' => 111, 'chat_id' => 222, 'status' => MaxChatStatus::Active, 'chat_type' => ChatType::Chat]);
+        $this->givenChatLink(111, 222);
         $this->http->queue($this->chatMemberResponse(111));
 
         $this->assertTrue($this->service->ensureAvatar(MaxUser::findOrFail(111)));
@@ -306,12 +308,7 @@ final class MaxUserProfileServiceTest extends TestCase
 
     public function testRefreshWithActiveDialogChatUsesDialogWithUser(): void
     {
-        MaxChat::create([
-            'user_id' => 111,
-            'chat_id' => 222,
-            'status' => MaxChatStatus::Active,
-            'chat_type' => ChatType::Dialog,
-        ]);
+        $this->givenChatLink(111, 222, chatType: ChatType::Dialog);
         $this->http->queue($this->chatResponse(222, 'dialog'));
 
         $this->assertTrue($this->service->refresh(111));
@@ -327,7 +324,7 @@ final class MaxUserProfileServiceTest extends TestCase
 
     public function testRefreshDialogChatResolvesAndPersistsChatType(): void
     {
-        MaxChat::create(['user_id' => 111, 'chat_id' => 222, 'status' => MaxChatStatus::Active]);
+        $this->givenChatLink(111, 222, chatType: null);
         $this->http->queue($this->chatResponse(222, 'dialog'));
 
         $this->assertTrue($this->service->refresh(111));
@@ -375,4 +372,41 @@ final class MaxUserProfileServiceTest extends TestCase
         $this->assertSame(0, MaxUser::query()->where('user_id', 333)->count());
         $this->assertSame(111, MaxUser::query()->sole()->user_id);
     }
+
+    /**
+     * Активный чат и связь с пользователем: строка реестра одна на чат,
+     * пользователи живут в max_chat_users.
+     */
+    /**
+     * У групп и каналов идентификатор отрицательный: профиль участников берётся
+     * именно оттуда (getChatMembers), поэтому знак отбрасывать нельзя — иначе
+     * аватары участников групп не заполнялись бы никогда.
+     */
+    public function testRefreshUsesGroupWithNegativeChatId(): void
+    {
+        $this->givenChatLink(111, -79032376695376, MaxChatStatus::Active, ChatType::Chat);
+        $this->http->queue($this->chatMemberResponse(111));
+
+        $this->assertTrue($this->service->refresh(111));
+        $this->assertSame(1, $this->http->callCount);
+        $this->assertNotNull(MaxUser::query()->sole()->avatar_url);
+    }
+
+    private function givenChatLink(
+        int $userId,
+        int $chatId,
+        MaxChatStatus $status = MaxChatStatus::Active,
+        ?ChatType $chatType = ChatType::Chat,
+    ): void {
+        MaxChat::query()->firstOrCreate(
+            ['chat_id' => $chatId],
+            ['status' => $status, 'chat_type' => $chatType],
+        );
+
+        MaxChatUser::query()->updateOrCreate(
+            ['chat_id' => $chatId, 'user_id' => $userId],
+            ['status' => $status],
+        );
+    }
+
 }
