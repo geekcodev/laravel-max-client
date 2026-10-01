@@ -4,245 +4,143 @@ declare(strict_types=1);
 
 namespace GeekCo\LaravelMaxClient\Console;
 
+use GeekCo\LaravelMaxClient\Services\MaxSchemaUpgrade;
 use Illuminate\Console\Command;
-use Illuminate\Database\Schema\Blueprint;
-use Illuminate\Support\Facades\Schema;
+use RuntimeException;
+use Throwable;
 
 /**
- * Идемпотентное добавление колонок и индекса, появившихся в обновлении пакета.
+ * Перевод реестров MAX на форму v1.2.0: одна строка max_chats на чат вместо
+ * строки на пару «пользователь + чат», первичный ключ строки — сам chat_id.
  *
- * Зачем это нужно. Имена миграций намеренно не менялись (0001_01_01_000001 и
- * 0001_01_01_000002), поэтому дополнение create_max_users/create_max_chats
- * доходит только до чистой установки: у потребителя, который уже выполнял эти
- * миграции, имена записаны в таблице migrations, и изменённый файл повторно не
- * запустится. Без этой команды первый же message_created упал бы с
- * «Unknown column».
+ * Нужна проектам, у которых пакет стоял до v1.2.0. Create-миграции переписаны,
+ * но их имена уже записаны в таблице migrations, поэтому до потребителя
+ * изменённые файлы не доходят — без этой команды первый же апдейт упал бы на
+ * колонке, которой больше нет.
  *
- * Команда безопасна в обе стороны: на чистой схеме ей нечего делать (всё уже
- * создано миграцией), на устаревшей она дописывает недостающее. Повторный
- * запуск ничего не меняет и завершается успешно.
+ * Порядок обязателен: сначала `php artisan migrate` (он создаёт таблицу
+ * max_chat_users), затем эта команда. Пока она не выполнена, max_chats остаётся
+ * в прежней форме, а модель MaxChat ждёт новую.
+ *
+ * Команда идемпотентна в обе стороны: на чистой схеме ей нечего делать, на
+ * прежней она переносит данные, повторный запуск ничего не меняет. Сделать
+ * резервную копию базы стоит до неё — откат восстанавливает форму, но не
+ * содержимое тех колонок, которых в прежней форме не было.
  */
 final class MaxUpgradeCommand extends Command
 {
     protected $signature = 'max:upgrade
-                            {--dry-run : Показать, что будет изменено, ничего не применяя}';
+                            {--dry-run : Показать, что изменится, ничего не применяя}
+                            {--force : Без подтверждения}
+                            {--rollback : Вернуть форму до v1.2.0 (строка на пару «пользователь + чат»)}';
 
-    protected $description = 'Добавить отсутствующие колонки и индекс реестров MAX (max_users, max_chats)';
+    protected $description = 'Перевести реестры MAX на форму v1.2.0: одна строка max_chats на чат с ключом chat_id';
 
-    /** @var list<string> */
-    private array $added = [];
-
-    /** @var list<string> */
-    private array $failed = [];
-
-    public function handle(): int
+    public function handle(MaxSchemaUpgrade $upgrade): int
     {
-        $dryRun = (bool) $this->option('dry-run');
+        try {
+            return $this->rollback($upgrade)
+                ?? $this->forward($upgrade);
+        } catch (Throwable $e) {
+            $this->error($e->getMessage());
 
-        $this->components->info('Проверка схемы реестров MAX');
+            return self::FAILURE;
+        }
+    }
 
-        $this->ensureChatsTable($dryRun);
-        $this->ensureUsersTable($dryRun);
+    private function forward(MaxSchemaUpgrade $upgrade): int
+    {
+        if (!$upgrade->isLegacy()) {
+            $this->info('Реестры уже в форме v1.2.0: переносить нечего.');
 
-        $this->newLine();
-
-        if ($this->added !== []) {
-            $this->components->info(
-                ($dryRun ? 'Будет добавлено: ' : 'Добавлено: ') . implode(', ', $this->added),
-            );
+            return self::SUCCESS;
         }
 
-        if ($dryRun) {
-            $this->components->info('Режим --dry-run: изменения не применялись.');
-
-            return $this->failed === [] ? self::SUCCESS : self::FAILURE;
-        }
-
-        if ($this->failed !== []) {
-            $this->components->error('Не удалось применить: ' . implode(', ', $this->failed));
+        if (!$upgrade->linksTableExists()) {
+            $this->error('Нет таблицы max_chat_users. Сначала выполните `php artisan migrate`.');
 
             return self::FAILURE;
         }
 
-        if ($this->added === []) {
-            $this->components->info('Схема уже актуальна, изменений не требуется.');
+        $plan = $upgrade->inspect();
+
+        $this->table(
+            ['Чатов', 'Пар «чат + пользователь»', 'Чатов с дублями'],
+            [[$plan['chats'], $plan['pairs'], $plan['duplicateChats']]],
+        );
+
+        $this->line('Будет создана строка на чат с ключом chat_id, пары уйдут в max_chat_users, '
+            .'колонки идентификаторов станут знаковыми.');
+
+        if ((bool) $this->option('dry-run')) {
+            $this->info('Режим --dry-run: ничего не изменено.');
+
+            return self::SUCCESS;
         }
+
+        if (!$this->confirmToProceed()) {
+            $this->warn('Отменено, ничего не изменено.');
+
+            return self::SUCCESS;
+        }
+
+        $upgrade->upgrade();
+
+        $this->info('Реестры переведены на форму v1.2.0.');
 
         return self::SUCCESS;
     }
 
-    private function ensureChatsTable(bool $dryRun): void
+    private function rollback(MaxSchemaUpgrade $upgrade): ?int
     {
-        if (!$this->tableExists('max_chats')) {
-            return;
+        if (!$this->option('rollback')) {
+            return null;
         }
 
-        $this->addColumn(
-            'max_chats',
-            'title',
-            static fn (Blueprint $table) => $table->string('title', 256)->nullable()
-                ->comment('Название группы или канала'),
-            $dryRun,
-        );
+        if ($upgrade->isLegacy()) {
+            $this->info('Реестры уже в форме до v1.2.0: откатывать нечего.');
 
-        $this->addColumn(
-            'max_chats',
-            'description',
-            static fn (Blueprint $table) => $table->text('description')->nullable()
-                ->comment('Описание чата'),
-            $dryRun,
-        );
-
-        $this->addColumn(
-            'max_chats',
-            'link',
-            static fn (Blueprint $table) => $table->string('link', 512)->nullable()
-                ->comment('Публичная ссылка на канал'),
-            $dryRun,
-        );
-
-        $this->addColumn(
-            'max_chats',
-            'icon_url',
-            static fn (Blueprint $table) => $table->string('icon_url', 512)->nullable()
-                ->comment('URL иконки чата'),
-            $dryRun,
-        );
-
-        $this->addColumn(
-            'max_chats',
-            'title_checked_at',
-            static fn (Blueprint $table) => $table->timestamp('title_checked_at')->nullable()
-                ->comment('Время последней синхронизации метаданных чата с MAX'),
-            $dryRun,
-        );
-
-        $this->addIndex('max_chats', 'chat_id', $dryRun);
-    }
-
-    private function ensureUsersTable(bool $dryRun): void
-    {
-        if (!$this->tableExists('max_users')) {
-            return;
+            return self::SUCCESS;
         }
 
-        $this->addColumn(
-            'max_users',
-            'phone_verified_at',
-            static fn (Blueprint $table) => $table->timestamp('phone_verified_at')->nullable()
-                ->comment('Время получения подтверждённого телефона из контакта'),
-            $dryRun,
-        );
+        $this->warn('Откат возвращает прежнюю форму: строка на пару «пользователь + чат» с суррогатным ключом.');
+
+        $this->line('Пары из max_chat_users станут отдельными строками; чат без пар сохранится с пустым user_id.');
+
+        if ((bool) $this->option('dry-run')) {
+            $this->info('Режим --dry-run: ничего не изменено.');
+
+            return self::SUCCESS;
+        }
+
+        if (!$this->confirmToProceed()) {
+            $this->warn('Отменено, ничего не изменено.');
+
+            return self::SUCCESS;
+        }
+
+        $result = $upgrade->rollback();
+
+        $this->info(\sprintf('Возвращено прежней формы: чатов %d, строк по парам %d.', $result['chats'], $result['pairs']));
+
+        return self::SUCCESS;
     }
 
     /**
-     * @param callable(Blueprint): mixed $definition описание колонки, выполняется
-     *                                            на Blueprint внутри Schema::table
+     * @throws RuntimeException если не подтверждено
      */
-    private function addColumn(string $table, string $column, callable $definition, bool $dryRun): void
+    private function confirmToProceed(): bool
     {
-        $target = "{$table}.{$column}";
-
-        if (Schema::hasColumn($table, $column)) {
-            $this->skip($target);
-
-            return;
-        }
-
-        if ($dryRun) {
-            $this->markAdded($target);
-
-            return;
-        }
-
-        try {
-            Schema::table($table, static function (Blueprint $blueprint) use ($definition): void {
-                $definition($blueprint);
-            });
-        } catch (\Throwable $e) {
-            $this->markFailed($target, $e->getMessage());
-
-            return;
-        }
-
-        $this->markAdded($target);
-    }
-
-    private function addIndex(string $table, string $column, bool $dryRun): void
-    {
-        $target = "{$table}.{$column} (index)";
-
-        if ($this->hasIndexOn($table, $column)) {
-            $this->skip($target);
-
-            return;
-        }
-
-        if ($dryRun) {
-            $this->markAdded($target);
-
-            return;
-        }
-
-        try {
-            Schema::table($table, static function (Blueprint $blueprint) use ($column): void {
-                $blueprint->index($column);
-            });
-        } catch (\Throwable $e) {
-            $this->markFailed($target, $e->getMessage());
-
-            return;
-        }
-
-        $this->markAdded($target);
-    }
-
-    /**
-     * Публичного хелпера с проверкой индекса по колонке в Laravel нет, поэтому
-     * смотрим каталог индексов таблицы.
-     */
-    private function hasIndexOn(string $table, string $column): bool
-    {
-        foreach (Schema::getIndexes($table) as $index) {
-            if (!\is_array($index)) {
-                continue;
-            }
-
-            $columns = $index['columns'] ?? null;
-
-            if (\is_array($columns) && $columns === [$column]) {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    private function tableExists(string $table): bool
-    {
-        if (Schema::hasTable($table)) {
+        if ((bool) $this->option('force')) {
             return true;
         }
 
-        $this->components->warn("Таблица {$table} отсутствует — пропущено (миграции пакета не выполнялись).");
+        if ($this->option('no-interaction')) {
+            throw new RuntimeException(
+                'Нужно подтверждение. Запустите команду с --force или интерактивно.',
+            );
+        }
 
-        return false;
-    }
-
-    private function skip(string $target): void
-    {
-        $this->components->twoColumnDetail($target, '<fg=gray>уже есть</>');
-    }
-
-    private function markAdded(string $target): void
-    {
-        $this->added[] = $target;
-        $this->components->twoColumnDetail($target, '<fg=green>добавлено</>');
-    }
-
-    private function markFailed(string $target, string $message): void
-    {
-        $this->failed[] = $target;
-        $this->components->twoColumnDetail($target, '<fg=red>ошибка: ' . $message . '</>');
+        return $this->confirm('Выполнить?', true);
     }
 }

@@ -147,7 +147,12 @@ final class LogMaxRequestsMiddleware
      */
     private function maskSensitiveData(array $data): array
     {
-        $sensitiveKeys = ['password', 'token', 'secret', 'auth_token', 'access_token', 'api_key', 'authorization'];
+        $sensitiveKeys = [
+            'password', 'token', 'secret', 'auth_token', 'access_token', 'api_key', 'authorization',
+            // Персональные данные из подтверждённого контакта и содержимое vCard
+            // попадают в тело апдейта, а логировать их нельзя (A09).
+            'phone', 'vcf_info', 'vcf_phone',
+        ];
 
         foreach ($data as $key => $value) {
             if (is_string($key) && in_array(mb_strtolower($key), $sensitiveKeys, true)) {

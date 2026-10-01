@@ -190,16 +190,26 @@ return [
     | Готовая реализация документированной практики MAX: chat_id хранить через
     | подписку на bot_added/bot_started (getChats deprecated). При enabled=true
     | пакет регистрирует слушателя MaxUpdateReceived, который обновляет таблицу
-    | max_chats и linked max_users. Миграция публикуется: php artisan vendor:publish
-    | --tag=laravel-max-client-migrations. model — класс модели (для переопределения).
+    | max_chats (одна строка на чат), связи с пользователями — в max_chat_users,
+    | профили — в max_users. Миграции подгружаются провайдером из каталога
+    | database/migrations пакета, публикация не нужна: php artisan migrate.
+    | model — класс модели чата, chat_users_model — класс модели связи
+    | (для переопределения).
     |
     */
 
     'chats' => [
         'enabled' => filter_var(env('MAX_CHATS_ENABLED', false), FILTER_VALIDATE_BOOLEAN),
         'model' => (string) env('MAX_CHATS_MODEL', \GeekCo\LaravelMaxClient\Models\MaxChat::class),
+        'chat_users_model' => (string) env('MAX_CHAT_USERS_MODEL', \GeekCo\LaravelMaxClient\Models\MaxChatUser::class),
         'fetch_metadata' => filter_var(env('MAX_CHATS_FETCH_METADATA', true), FILTER_VALIDATE_BOOLEAN),
-        'title_check_interval' => (int) env('MAX_CHATS_TITLE_CHECK_INTERVAL', 0),
+        // Прежнее имя MAX_CHATS_TITLE_CHECK_INTERVAL действовало в v1.1.4, поэтому
+        // остаётся рабочим, пока новое не задано. Пустая строка в .env — это «не
+        // задано» (так заполнен .env.example), а явный 0 («проверять всегда») — это
+        // значение, и оно побеждает прежнее имя.
+        'chat_check_interval' => (int) (\in_array(env('MAX_CHATS_CHAT_CHECK_INTERVAL'), [null, ''], true)
+            ? env('MAX_CHATS_TITLE_CHECK_INTERVAL', 0)
+            : env('MAX_CHATS_CHAT_CHECK_INTERVAL')),
     ],
 
     /*

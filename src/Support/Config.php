@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace GeekCo\LaravelMaxClient\Support;
 
 use GeekCo\LaravelMaxClient\Models\MaxChat;
+use GeekCo\LaravelMaxClient\Models\MaxChatUser;
 use GeekCo\LaravelMaxClient\Models\MaxUser;
 
 final readonly class Config
@@ -250,6 +251,20 @@ final readonly class Config
     }
 
     /**
+     * @return class-string<MaxChatUser>
+     */
+    public function chatUsersModel(): string
+    {
+        $model = $this->string('chats.chat_users_model', MaxChatUser::class);
+
+        if (!is_a($model, MaxChatUser::class, true)) {
+            return MaxChatUser::class;
+        }
+
+        return $model;
+    }
+
+    /**
      * Резолвить chat_id для MaxUserProfileService из активных max_chats.
      */
     public function profileFromActiveChats(): bool
@@ -274,10 +289,6 @@ final readonly class Config
     }
 
     /**
-     * Сохранять телефон из подтверждённого контакта (request_contact) в max_users.phone.
-     * По умолчанию выключено: это персональные данные, включать нужно явно.
-     */
-    /**
      * Запрашивать метаданные чата (название, описание, иконку) через getChat
      * при bot_added/bot_started, если название ещё неизвестно.
      */
@@ -287,10 +298,20 @@ final readonly class Config
     }
 
     /**
-     * Периодичность перепроверки метаданных чата, сек (0 — только при пустом названии).
+     * Периодичность перепроверки метаданных чата, сек (0 — проверять всегда).
+     *
+     * Ключ называется chat_check_interval, а не title: отметка chat_checked_at
+     * относится ко всем метаданным getChat сразу. Прежний chats.title_check_interval
+     * читается, только если нового ключа нет в конфиге вообще: так опубликованный
+     * до v1.2.0 конфиг не теряет заданный интервал, а явно выставленный новый
+     * ключ (в том числе 0) всегда побеждает старый.
      */
-    public function chatsTitleCheckInterval(): int
+    public function chatsChatCheckInterval(): int
     {
+        if ($this->has('chats.chat_check_interval')) {
+            return $this->int('chats.chat_check_interval', 0);
+        }
+
         return $this->int('chats.title_check_interval', 0);
     }
 
@@ -306,6 +327,11 @@ final readonly class Config
         $value = config(self::KEY . '.' . $key, $default);
 
         return \is_int($value) ? $value : $default;
+    }
+
+    private function has(string $key): bool
+    {
+        return config()->has(self::KEY . '.' . $key);
     }
 
     private function float(string $key, float $default): float

@@ -6,6 +6,7 @@ namespace GeekCo\LaravelMaxClient\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasManyThrough;
 
 /**
  * @property int $user_id
@@ -62,10 +63,30 @@ class MaxUser extends Model
     }
 
     /**
-     * @return HasMany<MaxChat, $this>
+     * Чаты, в которых бот получал апдейты от пользователя.
+     *
+     * @return HasManyThrough<MaxChat, MaxChatUser, $this>
      */
-    public function maxChats(): HasMany
+    public function maxChats(): HasManyThrough
     {
-        return $this->hasMany(MaxChat::class, 'user_id', 'user_id');
+        return $this->hasManyThrough(
+            MaxChat::class,
+            MaxChatUser::class,
+            'user_id',
+            'chat_id',
+            'user_id',
+            'chat_id',
+        );
+    }
+
+    /**
+     * Прямой доступ к строкам связи: в отличие от maxChats() доступен статус
+     * взаимодействия и время последней активности пользователя в чате.
+     *
+     * @return HasMany<MaxChatUser, $this>
+     */
+    public function chatLinks(): HasMany
+    {
+        return $this->hasMany(MaxChatUser::class, 'user_id', 'user_id');
     }
 }

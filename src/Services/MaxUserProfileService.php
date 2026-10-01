@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace GeekCo\LaravelMaxClient\Services;
 
-use GeekCo\LaravelMaxClient\Enums\MaxChatStatus;
 use GeekCo\LaravelMaxClient\Models\MaxUser;
 use GeekCo\LaravelMaxClient\Support\Config;
 use GeekCo\LaravelMaxClient\Support\Logger;
@@ -14,18 +13,16 @@ use GeekCo\MaxPhpClient\Dto\UserWithPhoto;
 use GeekCo\MaxPhpClient\Enum\ChatType;
 
 /**
- * Внутренний класс: собирается контейнером, вручную не инстанцировать. В v1.1.4 в конструктор
- * добавлен обязательный MaxChatProfileService — изменение задокументировано в
- * .agents/release/RELEASE_NOTES_v1.1.4.md. При переопределении привязки передавайте все четыре
- * зависимости (см. MaxServiceProvider::register()).
- */
-/**
  * Получение и сохранение полного профиля пользователя MAX (включая аватар).
  * Аватар в апдейтах не приходит — источник истины getChatMembers (группы/
  * каналы) и dialog_with_user (диалоги, где getChatMembers недоступен). Тип
  * чата берём из реестра max_chats.chat_type, при неизвестном — запрашиваем
  * getChat() через MaxChatProfileService и запоминаем. Триггер «когда вызывать» —
  * в приложении.
+ *
+ * Внутренний класс: собирается контейнером, вручную не инстанцировать. При
+ * переопределении привязки передавайте все четыре зависимости (см.
+ * MaxServiceProvider::register()).
  */
 final class MaxUserProfileService
 {
@@ -123,8 +120,11 @@ final class MaxUserProfileService
     }
 
     /**
-     * Сгруппировать userIds по активным чатам: для каждого пользователя берём
-     * любой активный max_chats (одна запись на пользователя на чат).
+     * Сгруппировать userIds по активным чатам.
+     *
+     * chat_id берётся из активных строк max_chats (одна строка на чат), а
+     * user_id — из max_chat_users: связь чата с пользователями живёт в отдельной
+     * таблице, поэтому одних строк чата недостаточно.
      *
      * @param list<int> $userIds
      *
@@ -136,25 +136,31 @@ final class MaxUserProfileService
             return [];
         }
 
-        $chats = $this->config->chatsModel()::query()
+        $activeChatIds = $this->chatProfile->activeChatIds();
+
+        if ($activeChatIds === []) {
+            return [];
+        }
+
+        $links = $this->config->chatUsersModel()::query()
             ->whereIn('user_id', $userIds)
-            ->where('status', MaxChatStatus::Active)
-            ->get();
+            ->whereIn('chat_id', $activeChatIds)
+            ->orderBy('chat_id')
+            ->orderBy('user_id')
+            ->get(['chat_id', 'user_id']);
 
         $groups = [];
 
-        foreach ($chats as $chat) {
-            $chatId = filter_var($chat->chat_id, FILTER_VALIDATE_INT);
-            $userId = filter_var($chat->user_id, FILTER_VALIDATE_INT);
+        foreach ($links as $link) {
+            $chatId = filter_var($link->chat_id, FILTER_VALIDATE_INT);
+            $userId = filter_var($link->user_id, FILTER_VALIDATE_INT);
 
-            if ($chatId === false || $userId === false || $chatId <= 0) {
+            if ($chatId === false || $userId === false || $chatId === 0) {
                 continue;
             }
 
             $groups[$chatId] ??= [];
-            if (!\in_array($userId, $groups[$chatId], true)) {
-                $groups[$chatId][] = $userId;
-            }
+            $groups[$chatId][] = $userId;
         }
 
         return $groups;
@@ -244,7 +250,7 @@ final class MaxUserProfileService
 
         return array_values(array_unique(array_filter(
             $ids,
-            static fn (int $id): bool => $id > 0,
+            static fn (int $id): bool => $id !== 0,
         )));
     }
 

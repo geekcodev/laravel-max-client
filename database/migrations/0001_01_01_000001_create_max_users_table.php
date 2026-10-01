@@ -10,7 +10,7 @@ return new class () extends Migration {
     public function up(): void
     {
         Schema::create('max_users', function (Blueprint $table): void {
-            $table->unsignedBigInteger('user_id')->primary()->comment('Идентификатор пользователя в MAX');
+            $table->bigInteger('user_id')->primary()->comment('Идентификатор пользователя в MAX (int64)');
             $table->string('first_name', 128)->comment('Имя пользователя');
             $table->string('last_name', 128)->nullable()->comment('Фамилия пользователя');
             $table->string('username', 128)->nullable()->comment('Username пользователя (@username)');
@@ -22,8 +22,12 @@ return new class () extends Migration {
             $table->string('full_avatar_url', 512)->nullable()->comment('URL полного аватара');
             $table->string('phone', 32)->nullable()->comment('Телефон пользователя');
             $table->string('email', 256)->nullable()->comment('Email пользователя');
+            $table->timestamp('phone_verified_at')->nullable()->comment('Время получения подтверждённого телефона из контакта');
             $table->timestamp('profile_checked_at')->nullable()->comment('Время последней синхронизации профиля с MAX');
             $table->timestamps();
+
+            $table->index('phone');
+            $table->index('profile_checked_at');
         });
     }
 

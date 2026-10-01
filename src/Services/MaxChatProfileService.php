@@ -10,7 +10,6 @@ use GeekCo\LaravelMaxClient\Support\Logger;
 use GeekCo\MaxPhpClient\ApiClient;
 use GeekCo\MaxPhpClient\Dto\Chat;
 use GeekCo\MaxPhpClient\Enum\ChatType;
-use Illuminate\Database\Eloquent\Builder;
 
 /**
  * Метаданные чата: название, описание, ссылка, иконка.
@@ -20,10 +19,10 @@ use Illuminate\Database\Eloquent\Builder;
  * приходит отдельным событием chat_title_changed. Поэтому название группы или
  * канала заполняется постфактум запросом, а не из апдейта.
  *
- * В группе реестр содержит по записи на каждого участника, поэтому один ответ
- * getChat пишется во все записи с этим chat_id — на 50 участников приходится
- * один запрос, а не пятьдесят. Непустой ответ не затирает уже известное
- * значение пустым: публичный канал без названия — обычное дело.
+ * Реестр хранит одну строку на чат, поэтому ответ getChat пишется ровно в неё:
+ * запрос на чат один, а не по одному на каждого участника группы. Непустой
+ * ответ не затирает уже известное значение пустым: публичный канал без названия —
+ * обычное дело.
  *
  * Класс кэширует ответ в памяти на время запроса (одна работа HandleMaxUpdateJob),
  * чтобы MaxUserProfileService и слушатели не ходили в API за одним и тем же чатом.
@@ -41,7 +40,7 @@ final class MaxChatProfileService
     }
 
     /**
-     * Записать метаданные чата во все записи реестра с этим chat_id.
+     * Записать метаданные чата в строку реестра.
      * chat_type дозаполняется только при неизвестном значении.
      */
     public function sync(int $chatId): bool
@@ -59,7 +58,7 @@ final class MaxChatProfileService
             ->whereNull('chat_type')
             ->update(['chat_type' => $chat->type]);
 
-        $data = ['title_checked_at' => now()];
+        $data = ['chat_checked_at' => now()];
 
         $title = $this->trimmedOrNull($chat->title);
         if ($title !== null) {
@@ -89,73 +88,23 @@ final class MaxChatProfileService
     }
 
     /**
-     * Гарантировать, что метаданные чата есть во всех его записях реестра.
+     * Гарантировать, что метаданные чата записаны в реестр.
      *
-     * Три состояния на chat_id:
-     *   - ни одной заполненной записи — запросить getChat (один запрос на чат);
-     *   - часть записей пуста — раздать уже известные значения без запроса;
-     *   - все записи заполнены — ничего не делать.
+     * Два состояния на chat_id:
+     *   - название неизвестно — запросить getChat (один запрос на чат);
+     *   - название известно — не ходить в API.
      *
-     * Второе состояние возникает штатно: запись создаётся по каждому участнику
-     * (bot_added/bot_started), поэтому чат, синхронизированный при первом
-     * участнике, докупляется позже на каждом следующем. Проверять «заполнены ли
-     * все» и идти в API при этом нельзя — вышло бы по одному одинаковому запросу
-     * на участника, то есть ровно та стоимость, ради которой один ответ пишется
-     * во все записи.
+     * Второе состояние нужно, чтобы не опрашивать getChat по каждому участнику
+     * чата: группа может прислать bot_started от пятидесяти участников подряд, и
+     * без проверки это пятьдесят одинаковых запросов.
      */
     public function ensureMetadata(int $chatId): bool
     {
-        if ($this->inheritKnownMetadata($chatId)) {
-            return true;
-        }
-
         if ($this->hasKnownTitle($chatId)) {
             return true;
         }
 
         return $this->sync($chatId);
-    }
-
-    /**
-     * Скопировать известные метаданные в записи реестра, где их ещё нет.
-     * Запроса в API нет: значения уже получены предыдущим getChat. Существующие
-     * непустые значения не перезаписываются, title_checked_at переносится вместе
-     * с ними, чтобы периодичность проверки считалась одинаково для всех записей.
-     */
-    public function inheritKnownMetadata(int $chatId): bool
-    {
-        $model = $this->config->chatsModel();
-
-        $source = $model::query()
-            ->where('chat_id', $chatId)
-            ->whereNotNull('title')
-            ->where('title', '!=', '')
-            ->first(['title', 'description', 'link', 'icon_url', 'chat_type', 'title_checked_at']);
-
-        if ($source === null) {
-            return false;
-        }
-
-        $data = [];
-
-        foreach (['title', 'description', 'link', 'icon_url'] as $column) {
-            if ($source->{$column} !== null) {
-                $data[$column] = $source->{$column};
-            }
-        }
-
-        if ($source->chat_type instanceof ChatType) {
-            $data['chat_type'] = $source->chat_type;
-        }
-
-        $data['title_checked_at'] = $source->title_checked_at ?? now();
-
-        return $model::query()
-            ->where('chat_id', $chatId)
-            ->where(static function (Builder $query): void {
-                $query->whereNull('title')->orWhere('title', '=', '');
-            })
-            ->update($data) > 0;
     }
 
     /**
@@ -193,7 +142,7 @@ final class MaxChatProfileService
 
     /**
      * Чаты, метаданные которых пора обновить: из запрошенных исключаются те,
-     * у которых title_checked_at свежее chats.title_check_interval. Нулевой
+     * у которых chat_checked_at свежее chats.chat_check_interval. Нулевой
      * интервал означает «проверять всегда» — так по умолчанию и работает
      * первичное дозаполнение.
      *
@@ -205,7 +154,7 @@ final class MaxChatProfileService
     {
         $ids = $this->normalizeChatIds($chatId ?? $this->activeChatIds());
 
-        $interval = $this->config->chatsTitleCheckInterval();
+        $interval = $this->config->chatsChatCheckInterval();
 
         if ($interval <= 0 || $ids === []) {
             return $ids;
@@ -217,13 +166,12 @@ final class MaxChatProfileService
 
         foreach ($this->config->chatsModel()::query()
             ->whereIn('chat_id', $ids)
-            ->whereNotNull('title_checked_at')
-            ->where('title_checked_at', '>=', $threshold)
-            ->distinct()
+            ->whereNotNull('chat_checked_at')
+            ->where('chat_checked_at', '>=', $threshold)
             ->pluck('chat_id') as $value) {
             $id = filter_var($value, FILTER_VALIDATE_INT);
 
-            if ($id !== false && $id > 0) {
+            if ($id !== false && $id !== 0) {
                 $freshIds[] = $id;
             }
         }
@@ -302,7 +250,7 @@ final class MaxChatProfileService
     }
 
     /**
-     * Есть ли у чата хотя бы одна запись реестра с известным названием.
+     * Известно ли название чата в реестре.
      */
     public function hasKnownTitle(int $chatId): bool
     {
@@ -314,6 +262,8 @@ final class MaxChatProfileService
     }
 
     /**
+     * Активные чаты реестра. Одна строка на чат, поэтому distinct не нужен.
+     *
      * @return list<int>
      */
     public function activeChatIds(): array
@@ -324,11 +274,10 @@ final class MaxChatProfileService
 
         foreach ($model::query()
             ->where('status', MaxChatStatus::Active)
-            ->distinct()
             ->pluck('chat_id') as $chatId) {
             $id = filter_var($chatId, FILTER_VALIDATE_INT);
 
-            if ($id !== false && $id > 0 && !\in_array($id, $ids, true)) {
+            if ($id !== false && $id !== 0 && !\in_array($id, $ids, true)) {
                 $ids[] = $id;
             }
         }
@@ -347,7 +296,7 @@ final class MaxChatProfileService
 
         return array_values(array_unique(array_filter(
             $ids,
-            static fn (int $id): bool => $id > 0,
+            static fn (int $id): bool => $id !== 0,
         )));
     }
 

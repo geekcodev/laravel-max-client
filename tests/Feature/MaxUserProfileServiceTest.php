@@ -6,6 +6,7 @@ namespace GeekCo\LaravelMaxClient\Tests\Feature;
 
 use GeekCo\LaravelMaxClient\Enums\MaxChatStatus;
 use GeekCo\LaravelMaxClient\Models\MaxChat;
+use GeekCo\LaravelMaxClient\Models\MaxChatUser;
 use GeekCo\LaravelMaxClient\Models\MaxUser;
 use GeekCo\LaravelMaxClient\Services\MaxUserProfileService;
 use GeekCo\LaravelMaxClient\Tests\Support\MockHttpClient;
@@ -26,10 +27,14 @@ final class MaxUserProfileServiceTest extends TestCase
     public function testContainerResolvedServiceRefreshesProfileEndToEnd(): void
     {
         MaxChat::create([
-            'user_id' => 111,
             'chat_id' => 222,
             'status' => MaxChatStatus::Active,
             'chat_type' => ChatType::Chat,
+        ]);
+        MaxChatUser::create([
+            'chat_id' => 222,
+            'user_id' => 111,
+            'status' => MaxChatStatus::Active,
         ]);
 
         $http = new MockHttpClient([$this->chatMemberResponse(111)]);
@@ -42,5 +47,6 @@ final class MaxUserProfileServiceTest extends TestCase
         $this->assertDatabaseHas('max_users', ['user_id' => 111, 'avatar_url' => 'https://avatars.example/111_s.jpg']);
         $this->assertSame(1, MaxChat::query()->count());
         $this->assertSame(1, MaxUser::query()->count());
+        $this->assertDatabaseHas('max_chat_users', ['chat_id' => 222, 'user_id' => 111]);
     }
 }
