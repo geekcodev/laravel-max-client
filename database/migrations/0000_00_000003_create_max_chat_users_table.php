@@ -12,10 +12,20 @@ use Illuminate\Support\Facades\Schema;
  * Не список состава чата: бот не видит участников, кроме тех, чьи апдейты он
  * получил. Строка появляется на bot_added/bot_started и обновляется на
  * message/comment/callback.
+ *
+ * Полоса 0000_00 — фундамент миграций, раскладка полос описана в
+ * 0000_00_000001_create_max_users_table.
+ *
+ * hasTable в up() обязателен: прежнее имя 0001_01_01_000003 уже записано в
+ * таблицу migrations у установленных приложений.
  */
 return new class () extends Migration {
     public function up(): void
     {
+        if (Schema::hasTable('max_chat_users')) {
+            return;
+        }
+
         Schema::create('max_chat_users', function (Blueprint $table): void {
             $table->uuid('id')->primary();
             $table->bigInteger('chat_id')->comment('Идентификатор чата в MAX (int64, у групп и каналов отрицательный)');

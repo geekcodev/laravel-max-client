@@ -18,7 +18,7 @@ use Illuminate\Support\Str;
  * релизов (add_phone_verified_at, add_chat_id_index, add_chat_metadata) уже
  * помечены выполненными, поэтому переписанные create-файлы до неё не доходят:
  * `php artisan migrate` их не перезапускает. Новая миграция
- * 0001_01_01_000003_create_max_chat_users_table видна как невыполненная (migrator
+ * 0000_00_000003_create_max_chat_users_table видна как невыполненная (migrator
  * сопоставляет записи по полному имени файла, а не по номеру) и создаёт таблицу
  * связей. Дальше форму реестров переводит команда `max:upgrade` — перенос данных
  * вынесен из миграций намеренно, см. докблок MaxSchemaUpgrade.
@@ -760,7 +760,7 @@ final class MaxSchemaUpgradeTest extends TestCase
         });
 
         DB::table('migrations')->insert([
-            'migration' => '0001_01_01_000003_create_max_chat_users_table',
+            'migration' => '0000_00_000003_create_max_chat_users_table',
             'batch' => 2,
         ]);
     }
