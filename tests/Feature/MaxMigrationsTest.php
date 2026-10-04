@@ -27,12 +27,37 @@ final class MaxMigrationsTest extends TestCase
     {
         $published = $this->app->databasePath('migrations');
 
-        $this->assertFileDoesNotExist($published . '/0001_01_01_000001_create_max_users_table.php');
-        $this->assertFileDoesNotExist($published . '/0001_01_01_000002_create_max_chats_table.php');
+        $this->assertFileDoesNotExist($published . '/0000_00_000001_create_max_users_table.php');
+        $this->assertFileDoesNotExist($published . '/0000_00_000002_create_max_chats_table.php');
 
         $this->assertTrue(Schema::hasTable('max_users'));
         $this->assertTrue(Schema::hasTable('max_chats'));
         $this->assertTrue(Schema::hasTable('max_chat_users'));
+    }
+
+    /**
+     * Миграции пакета лежат в полосе 0000_00.
+     *
+     * Полоса — это позиция в общем порядке миграций всех пакетов и приложения,
+     * а не отдельный именованный диапазон: Laravel сортирует их по имени файла,
+     * поэтому сдвиг полосы ломает чужие внешние ключи. Здесь полоса 0000_00,
+     * потому что на max_users ссылается users из системных миграций приложения
+     * (полоса 0000_01), а на max_chats — filament-max-chat (полоса 0000_02).
+     * Раскладка полос описана в 0000_00_000001_create_max_users_table.
+     */
+    public function testMigrationsUseFoundationBand(): void
+    {
+        $names = array_map(basename(...), glob($this->migrationsDirectory() . '/*.php') ?: []);
+
+        $this->assertNotEmpty($names);
+
+        foreach ($names as $name) {
+            $this->assertStringStartsWith(
+                '0000_00_',
+                $name,
+                sprintf('%s: миграция вне полосы 0000_00, порядок применения может сломаться', $name),
+            );
+        }
     }
 
     public function testMaxUsersColumns(): void
@@ -278,7 +303,7 @@ final class MaxMigrationsTest extends TestCase
 
     private function migrationPath(string $suffix): string
     {
-        return $this->migrationsDirectory() . '/0001_01_01_' . $suffix;
+        return $this->migrationsDirectory() . '/0000_00_' . $suffix;
     }
 
     private function projectPath(string $relative): string
