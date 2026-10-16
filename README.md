@@ -11,7 +11,7 @@
 
 - PHP ^8.4
 - Laravel ^12.0|^13.0
-- `geekcodev/max-php-client` ^1.1.6 (Comments API, `getUpdatesBatch`, `UploadedInfo`)
+- `geekcodev/max-php-client` ^1.1.10 (Comments API, `getUpdatesBatch`, `UploadedInfo`, `WebAppContactVerifier`)
 
 ## Установка
 
@@ -51,6 +51,7 @@ MAX_API_TOKEN=your-bot-access-token
 | `MAX_WEBAPP_STRICT`                        | `false`                                      | `max.webapp` возвращает 403 без валидного WebAppData                                                                                                            |
 | `MAX_WEBAPP_SESSION_USER_ID`               | `user_id`                                    | Ключ сессии для user_id (middleware `max.webapp`)                                                                                                               |
 | `MAX_WEBAPP_SESSION_CHAT_ID`               | `chat_id`                                    | Ключ сессии для chat_id (middleware `max.webapp`)                                                                                                               |
+| `MAX_WEBAPP_SESSION_CONTACT_CONFIRMED`     | `contact_confirmed`                          | Ключ флага подтверждённого контакта `requestContact` (`WebAppSession`)                                                                                          |
 | `MAX_WEBAPP_CSP_ENABLED`                   | `true`                                       | Добавлять `frame-ancestors` в CSP (middleware `max.csp`)                                                                                                        |
 | `MAX_WEBAPP_FRAME_ANCESTORS`               | `https://max.ru,https://web.max.ru`          | Хосты, которым разрешено встраивать мини-приложение (через запятую)                                                                                             |
 | `MAX_CHATS_ENABLED`                        | `false`                                      | Включает реестр чатов `max_chats` (слушатель `PersistMaxChatListener`)                                                                                          |
@@ -183,6 +184,65 @@ class WebAppController
 
 Ключи сессии настраиваются (`MAX_WEBAPP_SESSION_USER_ID` / `MAX_WEBAPP_SESSION_CHAT_ID`). Верифицированная идентичность
 также доступна в атрибуте запроса `ResolveWebAppIdentity::REQUEST_ATTRIBUTE`.
+
+Чтение ключей сессии и работа с флагом подтверждённого контакта — через `WebAppSession` (read-сторона тех же ключей,
+которые пишет middleware):
+
+```php
+use GeekCo\LaravelMaxClient\WebApp\WebAppSession;
+
+class CabinetController
+{
+    public function __invoke(Request $request, WebAppSession $webAppSession)
+    {
+        $userId = $webAppSession->userId($request);        // int|null (ключ webapp.session.user_id)
+        $chatId = $webAppSession->chatId($request);        // int|null
+
+        if (!$webAppSession->contactConfirmed($request, $userId ?? 0)) {
+            // контакт requestContact ещё не подтверждён для этого user_id
+        }
+    }
+}
+```
+
+`confirm($request, $userId)` регенерирует session id (защита от session fixation) и ставит флаг;
+`forget($request)` снимает флаг (выход / смена аккаунта). Ключ флага — `MAX_WEBAPP_SESSION_CONTACT_CONFIRMED`.
+
+### Контакт из мини-приложения (window.WebApp.requestContact)
+
+Мини-приложение MAX может запросить контакт пользователя через `window.WebApp.requestContact()` — это **другой**
+механизм, чем кнопка `request_contact` в чате: сервер MAX подписывает три поля payload (`authDate`, `phone`, `userId`;
+`phone` — без `+`), сравнение константное, свежесть `auth_date` — по `MAX_WEBAPP_MAX_AGE` (replay-защита). Проверку
+делает `WebAppContactService` (обёртка над ядром `WebAppContactVerifier`):
+
+```php
+use GeekCo\LaravelMaxClient\WebApp\WebAppContactService;
+use GeekCo\LaravelMaxClient\WebApp\WebAppSession;
+
+class ContactController
+{
+    public function __invoke(Request $request, WebAppContactService $contacts, WebAppSession $webAppSession)
+    {
+        // $request->input(...) — поля, переданные фронтендом из ответа requestContact()
+        $contact = $contacts->resolve(
+            $request->string('auth_date'),
+            $request->string('phone'),
+            $request->string('user_id'),
+            $request->string('hash'),
+        );
+
+        if ($contact === null) {
+            // подпись не сошлась / authDate просрочен — в лог уходит только факт и user_id
+            abort(403);
+        }
+
+        $webAppSession->confirm($request, $contact->userId); // contact->phone — номер в цифрах без «+»
+    }
+}
+```
+
+`verify(...)` — та же проверка без возврата контакта. Номер и `hash` в логи не попадают (A09); нормализация номера
+(удаление `+` и разделителей) — на стороне ядра. Оба класса доступны из контейнера.
 
 ### Middleware `max.csp` (встраивание в MAX)
 
@@ -479,10 +539,20 @@ php artisan max:subscribe https://example.com/max/webhook
 php artisan max:unsubscribe https://example.com/max/webhook
 ```
 
-- Подписка создаётся на рекомендованный набор апдейтов (`message_created`, `message_callback`, `bot_added`,
-  `bot_started`, `bot_stopped`, `bot_removed`) с секретом из `MAX_WEBHOOK_SECRET`.
+- Подписка создаётся на полный набор потребляемых пакетом типов апдейтов — 13 штук: `message_created`,
+  `message_callback`, `message_edited`, `message_removed`, `bot_added`, `bot_started`, `bot_stopped`, `bot_removed`,
+  `dialog_cleared`, `dialog_removed`, `chat_title_changed`, `user_added`, `user_removed` — с секретом из
+  `MAX_WEBHOOK_SECRET`. Список переопределяется ключом `webhook.update_types` (env `MAX_WEBHOOK_UPDATE_TYPES`, строка
+  через запятую либо массив в конфиге; пустое значение — дефолт пакета, `Config::DEFAULT_WEBHOOK_UPDATE_TYPES`). Это
+  фильтр **доставки подписки**: Long Polling (`max:listen`) типы не фильтрует.
 - URL проверяется: только HTTPS. Если задан `webhook.allowed_hosts` — хост должен быть в списке.
 - Предупреждение без секрета: подписка создастся, но роут не зарегистрируется (fail-closed).
+- Текущее состояние подписок (URL и активные `update_types`) смотрится командой `max:subscriptions`.
+- **Обновление существующей подписки**: `update_types` уходит один раз при создании, поэтому после обновления пакета
+  выполните `php artisan max:subscribe <url>` заново и сверьте результат через `max:subscriptions`. Один `max:subscribe`
+  достаточен: POST на уже существующий URL обновляет подписку (проверено эмпирически 2026-10-16: GET до/после показал
+  6 → 13 типов при одном URL). Без этого шага недостающие типы доставлены не будут — симптом «обновился, а правки не
+  приходят» выглядит как баг релиза.
 
 ## Вебхук
 
@@ -549,7 +619,8 @@ php artisan max:listen
 `limit` (100), `timeout` (30 сек), `break_on_failure` (`true` — завершаться при ошибке API; для долгой работы в dev
 задайте `MAX_POLLING_BREAK_ON_FAILURE=false`).
 
-> Активная webhook-подписка отключает Long Polling — не используйте оба механизма одновременно.
+> Активная webhook-подписка отключает Long Polling — не используйте оба механизма одновременно. Фильтр
+> `webhook.update_types` действует только на доставку подписки: `max:listen` присылает все типы апдейтов.
 
 ## Логирование (middleware `max.log`)
 
@@ -614,6 +685,7 @@ source .env && docker run --rm --network host \
 
 | Версия | Дата       | Основное                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
 |--------|------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| v1.2.2 | 2026-10-16 | `WebAppContactService` — подтверждение контакта из моста `window.WebApp.requestContact()` (верификатор ядра `WebAppContactVerifier`, ядро `^1.1.10`), `WebAppSession` — read-сторона WebApp-сессии с флагом подтверждённого контакта (`confirm()` регенерирует session id), ключ `webapp.session.contact_confirmed` (`MAX_WEBAPP_SESSION_CONTACT_CONFIRMED`); дефолтный список типов webhook-подписки расширен с 6 до 13 (`webhook.update_types`, env `MAX_WEBHOOK_UPDATE_TYPES`; фильтр доставки подписки, Long Polling не фильтрует) — после обновления выполнить `max:subscribe` заново                                                                                                   |
 | v1.2.0 | 2026-09-30 | `max_chats` хранит одну строку на чат с первичным ключом `chat_id`, связи с пользователями вынесены в `max_chat_users` (`MaxChatUser`, `MAX_CHAT_USERS_MODEL`) с суррогатным `id` типа `uuid`; удалён `MaxChat::maxUser()`; перенос данных с установки v1.1.x выполняет команда `max:upgrade` (`--dry-run`, `--force`, `--rollback`); колонки идентификаторов объявлены знаковым `BIGINT` — идентификаторы групп и каналов в MAX отрицательные; `title_checked_at` → `chat_checked_at` (значение переносит `max:upgrade`), `chats.title_check_interval` → `chats.chat_check_interval` (прежние имена читаются); метаданные чата запрашиваются один раз на чат независимо от числа участников |
 | v1.1.4 | 2026-09-30 | Метаданные чатов (`title`, `description`, `link`, `icon_url`) одним запросом `getChat` на чат, телефон из подтверждённого `request_contact`, `max:chats:refresh` и `max:upgrade`, аддитивные миграции вместо правки create-миграций; исправлены потеря `bot_removed` и незаполненные метаданные у поздних участников чата                                                                                                                                                                                                                                                                                                                                                                    |
 | v1.1.2 | 2026-09-17 | Профили в диалогах через `dialog_with_user` (`getChatMembers` для диалогов недоступен), резолв типа чата, кэш чатов, ядро `^1.1.0`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |

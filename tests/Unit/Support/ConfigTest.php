@@ -62,6 +62,67 @@ final class ConfigTest extends TestCase
         $this->assertSame('/max/webhook', $config->webhookPath());
         $this->assertSame(['throttle:60,1'], $config->webhookMiddleware());
         $this->assertSame([], $config->webhookAllowedHosts());
+        $this->assertSame(Config::DEFAULT_WEBHOOK_UPDATE_TYPES, $config->webhookUpdateTypes());
+        $this->assertNotSame([], $config->webhookUpdateTypes());
+    }
+
+    public function testWebhookUpdateTypesDefaultListIsConsumedAndNonEmpty(): void
+    {
+        $this->assertSame([
+            'message_created',
+            'message_callback',
+            'message_edited',
+            'message_removed',
+            'bot_added',
+            'bot_started',
+            'bot_stopped',
+            'bot_removed',
+            'dialog_cleared',
+            'dialog_removed',
+            'chat_title_changed',
+            'user_added',
+            'user_removed',
+        ], $this->config()->webhookUpdateTypes());
+    }
+
+    public function testWebhookUpdateTypesParsesCommaStringWithTrim(): void
+    {
+        $this->app['config']->set(
+            MaxServiceProvider::CONFIG_KEY . '.webhook.update_types',
+            " message_created, bot_added ,,message_edited\n",
+        );
+
+        $this->assertSame(
+            ['message_created', 'bot_added', 'message_edited'],
+            $this->config()->webhookUpdateTypes(),
+        );
+    }
+
+    public function testWebhookUpdateTypesAcceptsArrayAndDeduplicates(): void
+    {
+        $this->app['config']->set(
+            MaxServiceProvider::CONFIG_KEY . '.webhook.update_types',
+            ['message_created', 'message_created', 42, 'bot_added'],
+        );
+
+        $this->assertSame(['message_created', 'bot_added'], $this->config()->webhookUpdateTypes());
+    }
+
+    public function testWebhookUpdateTypesEmptyValueKeepsDefault(): void
+    {
+        $config = $this->config();
+
+        $this->app['config']->set(MaxServiceProvider::CONFIG_KEY . '.webhook.update_types', '');
+        $this->assertSame(Config::DEFAULT_WEBHOOK_UPDATE_TYPES, $config->webhookUpdateTypes());
+
+        $this->app['config']->set(MaxServiceProvider::CONFIG_KEY . '.webhook.update_types', ' , , ');
+        $this->assertSame(Config::DEFAULT_WEBHOOK_UPDATE_TYPES, $config->webhookUpdateTypes());
+
+        $this->app['config']->set(MaxServiceProvider::CONFIG_KEY . '.webhook.update_types', []);
+        $this->assertSame(Config::DEFAULT_WEBHOOK_UPDATE_TYPES, $config->webhookUpdateTypes());
+
+        $this->app['config']->set(MaxServiceProvider::CONFIG_KEY . '.webhook.update_types', null);
+        $this->assertSame(Config::DEFAULT_WEBHOOK_UPDATE_TYPES, $config->webhookUpdateTypes());
     }
 
     public function testLongPollingDefaults(): void
@@ -71,6 +132,22 @@ final class ConfigTest extends TestCase
         $this->assertSame(100, $config->pollingLimit());
         $this->assertSame(30, $config->pollingTimeout());
         $this->assertTrue($config->pollingBreakOnFailure());
+    }
+
+    public function testWebappSessionKeyDefaults(): void
+    {
+        $config = $this->config();
+
+        $this->assertSame('user_id', $config->webappSessionUserIdKey());
+        $this->assertSame('chat_id', $config->webappSessionChatIdKey());
+        $this->assertSame('contact_confirmed', $config->webappSessionContactConfirmedKey());
+    }
+
+    public function testWebappSessionContactConfirmedKeyIsConfigurable(): void
+    {
+        $this->app['config']->set(MaxServiceProvider::CONFIG_KEY . '.webapp.session.contact_confirmed', 'max_contact');
+
+        $this->assertSame('max_contact', $this->config()->webappSessionContactConfirmedKey());
     }
 
     public function testLoggingDefaults(): void

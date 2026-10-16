@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace GeekCo\LaravelMaxClient\Tests\Unit\Console;
 
 use GeekCo\LaravelMaxClient\MaxServiceProvider;
+use GeekCo\LaravelMaxClient\Support\Config;
 use GeekCo\LaravelMaxClient\Tests\Support\MockHttpClient;
 use GeekCo\LaravelMaxClient\Tests\TestCase;
 use GuzzleHttp\Psr7\Response;
@@ -35,11 +36,43 @@ final class MaxSubscribeCommandTest extends TestCase
         $this->assertSame([
             'message_created',
             'message_callback',
+            'message_edited',
+            'message_removed',
             'bot_added',
             'bot_started',
             'bot_stopped',
             'bot_removed',
+            'dialog_cleared',
+            'dialog_removed',
+            'chat_title_changed',
+            'user_added',
+            'user_removed',
         ], $body['update_types']);
+    }
+
+    public function testUpdateTypesOverrideFromConfigString(): void
+    {
+        $this->app['config']->set(
+            MaxServiceProvider::CONFIG_KEY . '.webhook.update_types',
+            ' message_created, bot_added ',
+        );
+        $mock = $this->mockSubscription();
+
+        $this->artisan('max:subscribe', ['url' => self::URL])->assertSuccessful();
+
+        $this->assertSame(['message_created', 'bot_added'], $this->requestBody($mock)['update_types']);
+    }
+
+    public function testEmptyUpdateTypesOverrideSendsNonEmptyPackageDefault(): void
+    {
+        $this->app['config']->set(MaxServiceProvider::CONFIG_KEY . '.webhook.update_types', '');
+        $mock = $this->mockSubscription();
+
+        $this->artisan('max:subscribe', ['url' => self::URL])->assertSuccessful();
+
+        $updateTypes = $this->requestBody($mock)['update_types'];
+        $this->assertSame(Config::DEFAULT_WEBHOOK_UPDATE_TYPES, $updateTypes);
+        $this->assertNotSame([], $updateTypes);
     }
 
     public function testCreatesSubscriptionWithoutSecretWhenNotConfigured(): void

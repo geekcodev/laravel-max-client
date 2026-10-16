@@ -21,7 +21,9 @@ use GeekCo\LaravelMaxClient\Services\MaxUserProfileService;
 use GeekCo\LaravelMaxClient\Support\Config;
 use GeekCo\LaravelMaxClient\Support\Logger;
 use GeekCo\LaravelMaxClient\WebApp\ResolveWebAppIdentity;
+use GeekCo\LaravelMaxClient\WebApp\WebAppContactService;
 use GeekCo\LaravelMaxClient\WebApp\WebAppContext;
+use GeekCo\LaravelMaxClient\WebApp\WebAppSession;
 use GeekCo\LaravelMaxClient\Webhook\HandleMaxUpdateJob;
 use GeekCo\LaravelMaxClient\Webhook\MaxUpdateReceived;
 use GeekCo\LaravelMaxClient\Webhook\MaxWebhookController;
@@ -31,6 +33,7 @@ use GeekCo\MaxPhpClient\Dto\Update;
 use GeekCo\MaxPhpClient\LongPolling\LongPollingRunner;
 use GeekCo\MaxPhpClient\RateLimit\RateLimiter;
 use GeekCo\MaxPhpClient\Retry\RetryStrategy;
+use GeekCo\MaxPhpClient\Security\WebAppContactVerifier;
 use GeekCo\MaxPhpClient\Security\WebAppDataValidator;
 use Illuminate\Contracts\Container\Container;
 use Illuminate\Contracts\Events\Dispatcher;
@@ -71,6 +74,27 @@ final class MaxServiceProvider extends ServiceProvider
         $this->app->singleton(
             WebAppContext::class,
             static fn (Container $app): WebAppContext => new WebAppContext($app->make(WebAppDataValidator::class)),
+        );
+
+        $this->app->singleton(
+            WebAppContactVerifier::class,
+            static fn (Container $app): WebAppContactVerifier => new WebAppContactVerifier(
+                accessToken: $app->make(Config::class)->apiToken(),
+                maxAge: $app->make(Config::class)->webappMaxAge(),
+            ),
+        );
+
+        $this->app->singleton(
+            WebAppContactService::class,
+            static fn (Container $app): WebAppContactService => new WebAppContactService(
+                $app->make(Config::class),
+                $app->make(Logger::class),
+            ),
+        );
+
+        $this->app->singleton(
+            WebAppSession::class,
+            static fn (Container $app): WebAppSession => new WebAppSession($app->make(Config::class)),
         );
 
         $this->app->singleton(

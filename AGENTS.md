@@ -17,9 +17,10 @@
   `geekcodev/laravel-max-client`). Актуальную версию всегда уточняй по `git tag --sort=-v:refname | head -1` и
   `git log --oneline -10`, а не по этому файлу. Незакоммиченная работа лежит в `dev`.
 - **Ядро.** `geekcodev/max-php-client` (namespace `GeekCo\MaxPhpClient`) — последний тег на момент последней
-  синхронизации **v1.1.8**, constraint в `composer.json` — `^1.1.8`. Ядро даёт PSR-7/17/18 транспорт, ретраи, rate
-  limit, загрузку медиа, webhook-хендлер, верификацию контакта и данных мини-приложения. **Фактические версии проверяй
-  динамически**: `composer show geekcodev/max-php-client` и `git -C ../max-php-client tag --sort=-v:refname |
+  синхронизации **v1.1.10**, constraint в `composer.json` — `^1.1.10`. Ядро даёт PSR-7/17/18 транспорт, ретраи, rate
+  limit, загрузку медиа, webhook-хендлер, верификацию контакта, данных мини-приложения и контакта из моста
+  `requestContact` (`WebAppContactVerifier`, с v1.1.10). **Фактические версии проверяй динамически**:
+  `composer show geekcodev/max-php-client` и `git -C ../max-php-client tag --sort=-v:refname |
   head -1` — не по этому файлу. Исправления ядра (CRLF/base64/`vcf_info` в верификации контакта, строковый
   `message.link.sender`, комментарии и разметка) адаптер наследует автоматически вместе с обновлением зависимости.
   Источник истины по API — `docs/api-reference.md` ядра и https://github.com/geekcodev/max-openapi (OpenAPI 3.1).
@@ -64,8 +65,8 @@
    здесь как отдельную задачу (тест + фикс + релиз), а не как обход в стороннем проекте. Найденные интеграторами
    расхождения ядра: v1.1.1 — CRLF, v1.1.2 — base64, v1.1.3 — raw `vcf_info`; схема — `docs/api-reference.md` ядра,
    раздел 9.
-8. **Веди `.agents`** (раздел 4.1): после каждой содержательной сессии обнови `journals/JOURNAL.md` и добавь файл
-   сессии; многошаговые задачи фиксируй в `plans/`; правки релиза — в `release/`.
+8. **Веди `.agents`** (раздел 4.1): после каждой содержательной сессии добавь файл сессии и строку таблицы в
+   `journals/JOURNAL.md`; многошаговые задачи фиксируй в `plans/`; правки релиза — в `release/`.
 9. **Язык — русский.** Все md-файлы, комментарии в коде, описания, планы и журнал пиши по-русски, информативно, без
    смешения языков и без декоративных артефактов (значков, условных обозначений, символов непонятного происхождения).
    Допустимы только русский и английский. Идентификаторы в коде, имена API-полей и термины спеки остаются как есть.
@@ -98,6 +99,8 @@ src/
   Services/MaxSchemaUpgrade.php    перенос данных и пересборка таблиц реестра (вызывается командой max:upgrade)
   WebApp/WebAppContext.php         верификация WebAppData мини-приложения (resolve/verify из Request и из строки)
   WebApp/ResolveWebAppIdentity.php middleware max.webapp: сессия user_id/chat_id + strict (403)
+  WebApp/WebAppContactService.php  подтверждение контакта из моста requestContact (ядро WebAppContactVerifier, v1.1.10)
+  WebApp/WebAppSession.php         read-сторона WebApp-сессии: user_id/chat_id, флаг contact_confirmed (confirm/forget)
   Enums/MaxChatStatus.php        статусы реестра чатов (active/stopped/removed + label())
   Models/MaxChat.php               модель реестра чатов max_chats (одна строка на чат, переопределяемая
                                    через chats.model): maxUsers(), chatUsers(), displayName()
@@ -154,7 +157,7 @@ scripts/check-coverage.php         порог покрытия строк (по 
 
 | Каталог               | Содержимое                                                                                     |
 |-----------------------|------------------------------------------------------------------------------------------------|
-| `journals/JOURNAL.md` | Карта сессий: дата · файл · теги · краткое описание                                            |
+| `journals/JOURNAL.md` | Карта сессий таблицей: дата, файл, теги, краткое описание (одна строка на сессию)              |
 | `journals/sessions/`  | Файлы сессий `YYYY-MM-DD-тема.md`: frontmatter с тегами, тело ≤5 КБ                            |
 | `plans/`              | Планы многошаговых задач `YYYY-MM-DD-тема.md`, статус: `в работе` или `завершён`; не удаляются |
 | `release/`            | `RELEASE_NOTES_vX.Y.Z.md` — описание каждой версии                                             |
@@ -165,7 +168,12 @@ scripts/check-coverage.php         порог покрытия строк (по 
 - **Файл сессии** — компактный отчёт: frontmatter (`tags`, `date`), затем секции `Проблема` / `Решение` / `Тесты` /
   `Нюансы` / `Gate`. Обязательная строка о Gate: что именно прогналось и с каким результатом. Секреты, токены,
   `vcf_info`, payload колбэков и прод-ответы в журнал не пишутся.
-- **`JOURNAL.md`** — одна строка на сессию, самые новые сверху; формат строки: `дата · файл · теги · описание`.
+- **`JOURNAL.md`** — карта сессий **одной markdown-таблицей** `| Дата | Файл | Теги | Описание |`, по одной строке на
+  сессию, самые новые сверху; над таблицей — короткая шапка (что это за карта, где подробности, правило о секретах).
+  Колонка `Файл` — путь относительно `journals/` (`sessions/YYYY-MM-DD-тема.md`), `Теги` — теги сессии через запятую из
+  frontmatter, `Описание` — краткая суть в **одну строку** (перенос строки разрывает таблицу, поэтому подробности
+  остаются в файле сессии). Абзацами, маркированным списком или отдельными блоками журнал не ведётся; теги и описания не
+  содержат секретов, токенов, `vcf_info`, телефонов и payload колбэков.
 - **План** — для задач из трёх и более шагов или требующих исследования (например, синхронизация со спекой): цель,
   исследование, реализация, тесты, нюансы, статус. Готовый план не удаляется, а помечается завершённым.
 - **Release notes** — пишутся в `.agents/release/RELEASE_NOTES_vX.Y.Z.md` при выпуске версии; значимые пункты
@@ -246,6 +254,21 @@ scripts/check-coverage.php         порог покрытия строк (по 
   данных —
   `403`. Регистрация алиаса — в `MaxServiceProvider::boot()`. Демо-режим — ответственность приложения (вьюха видит
   `null`).
+- **`WebApp\WebAppContactService`** (`src/WebApp/WebAppContactService.php`, v1.2.2): подтверждение контакта, полученного
+  мини-приложением через `window.WebApp.requestContact()` (мост requestContact — **другой** механизм, чем кнопка
+  `request_contact` в чате: там `vcf_info`, здесь три поля `authDate`/`phone`/`userId`). Тонкая обёртка над ядровым
+  `WebAppContactVerifier` (v1.1.10; singleton в контейнере, token из `api_token`, maxAge из
+  `webapp.max_age`). Конструктор `(Config, Logger)`; методы `resolve(authDate, phone, userId, hash):
+  ?WebAppContact` — подтверждённый контакт (номер в цифрах) или `null`, и `verify(...): bool`. При отказе логируется
+  только факт и `user_id` (`warning`), телефон/`hash`/payload не логируются (A09). Подпись считается по нормализованным
+  (цифровым) значениям полей — нормализацию делает ядро.
+- **`WebApp\WebAppSession`** (`src/WebApp/WebAppSession.php`, v1.2.2): `final readonly`-хелпер — read-сторона тех же
+  ключей сессии, которые пишет `ResolveWebAppIdentity`. Методы: `userId(Request): ?int`, `chatId(Request): ?int`
+  (ключи `webapp.session.*`), `contactConfirmed(Request, int): bool` — сверяет сохранённый `user_id` с переданным,
+  `confirm(Request, int): void` — `session()->regenerate()` (anti-fixation) + запись флага в ключ
+  `webapp.session.contact_confirmed` (env `MAX_WEBAPP_SESSION_CONTACT_CONFIRMED`, default `contact_confirmed`;
+  значение — `user_id`, которому контакт подтверждён), `forget(Request): void` — снятие флага. Биндинги всех трёх
+  классов (`WebAppContactVerifier`, `WebAppContactService`, `WebAppSession`) — в `MaxServiceProvider::register()`.
 - **`SetMaxFrameAncestors`** (алиас `max.csp`): middleware добавляет в `Content-Security-Policy` директиву
   `frame-ancestors 'self' <hosts>` (хосты из `webapp.frame_ancestors.hosts`, env `MAX_WEBAPP_FRAME_ANCESTORS`, default
   `max.ru`/`web.max.ru`); если CSP-заголовок уже задан — дописывает. Отключение — `webapp.frame_ancestors.enabled`
@@ -358,9 +381,14 @@ scripts/check-coverage.php         порог покрытия строк (по 
   приложения.
 - **Подписки** (`MaxSubscribeCommand`, `MaxUnsubscribeCommand`): `php artisan max:subscribe <url>` /
   `max:unsubscribe <url>`. URL — только HTTPS; при заданном `config('laravel-max-client.webhook.allowed_hosts')` хост
-  сверяется до создания подписки (A10). Подписка — на рекомендованный набор апдейтов (`UpdateType::*`), секрет из
-  `MAX_WEBHOOK_SECRET`. Активная подписка отключает Long Polling. Предупреждение без секрета: подписка создастся, но
-  роут не зарегистрируется (fail-closed).
+  сверяется до создания подписки (A10). Подписка — на полный набор потребляемых типов
+  (`Config::DEFAULT_WEBHOOK_UPDATE_TYPES`, 13 значений `UpdateType::*`; переопределяется ключом `webhook.update_types`,
+  env `MAX_WEBHOOK_UPDATE_TYPES` — строка через запятую или массив в конфиге, пустое значение — дефолт, полностью пустой
+  список деградирует в дефолт). `update_types` — фильтр **доставки подписки**: Long Polling (`max:listen`)
+  типы не фильтрует. POST на существующий URL обновляет подписку (проверено эмпирически 2026-10-16), поэтому обновление
+  существующей подписки после обновления пакета — один `max:subscribe`; состояние проверяется `max:subscriptions`.
+  Секрет из `MAX_WEBHOOK_SECRET`. Активная подписка отключает Long Polling. Предупреждение без секрета: подписка
+  создастся, но роут не зарегистрируется (fail-closed).
 - **Токен аутентификации** — заголовок `Authorization: <token>` **без** `Bearer`, не в query (гарантирует ядро).
 - **Ошибки**: пакет прокидывает исключения ядра (`GeekCo\MaxPhpClient\Exception\MaxApiException` и наследники). В
   вебхук-контроллере/джобе они логируются без чувствительных данных (code + message ошибки API допустимы; vcf_info,
@@ -383,13 +411,14 @@ scripts/check-coverage.php         порог покрытия строк (по 
 - Тесты обязательны для нового кода: unit на компоненты пакета; HTTP-слой — через `tests/Support/MockHttpClient`
   (PSR-18) или подмену `ClientInterface` в контейнере Testbench. Интеграционные — read-only, группа `integration`, без
   токена `markTestSkipped` (не падать).
-- `composer.json` constraints на момент разработки: `php ^8.4`, `geekcodev/max-php-client ^1.1.6` (комментарии и
+- `composer.json` constraints на момент разработки: `php ^8.4`, `geekcodev/max-php-client ^1.1.10` (комментарии и
   разметка в ответах, 19 типов обновлений, DTO `Chat` с `dialog_with_user` — с v1.1.0 ядра; `WebAppDataValidator`
   появился в v1.0.1; `Update::$user` nullable и фолбэки `user`/`chat_id` — с v1.0.3; `ApiClient::create()` с
   `global_rate_limiter`, deprecated-права админов и пустое тело `sendAnswer` — с v1.0.6; Comments API (`getComments`/
   `sendComment`/`editComment`/`deleteComment`/`getComment`), `getUpdatesBatch`, `UploadResult` →
   `UploadedInfo`, `sendAnswer` с `notification`/`disableLinkPreview`, `Update::$comment` и события комментариев — с
-  v1.1.6 — версия ниже не резолвит актуальные сигнатуры; `ContactPhoneExtractor::fromVcf()` — с v1.1.7),
+  v1.1.6 — версия ниже не резолвит актуальные сигнатуры; `ContactPhoneExtractor::fromVcf()` — с v1.1.7;
+  `Security\WebAppContactVerifier` и `Dto\WebAppContact` (контакт из моста `requestContact`) — с v1.1.10),
   `laravel/framework ^12.0|^13.0`, `guzzlehttp/guzzle ^7.15`
   (обязателен как PSR-18 по умолчанию), `illuminate/support`/`illuminate/queue`/`illuminate/routing` — через
   `laravel/framework`; dev — Testbench под поддерживаемую версию Laravel, phpunit ^11.5, phpstan ^2.0,
@@ -408,7 +437,7 @@ scripts/check-coverage.php         порог покрытия строк (по 
 - **A05** — publishable-конфиг с безопасными дефолтами; `php artisan config:cache` безопасен для `env()`
   (использовать только на этапе конфига); секреты не попадают в `config:show` без необходимости (документировать
   маскирование при выводе).
-- **A06/A08** — актуальные зависимости: PHP ^8.4, ядро `^1.1.8` (фактическая версия — динамически, раздел 1),
+- **A06/A08** — актуальные зависимости: PHP ^8.4, ядро `^1.1.10` (фактическая версия — динамически, раздел 1),
   `composer audit` в Gate и CI; CI на push/PR.
 - **A07** — все сравнения секретов — только `hash_equals` (ядро + middleware вебхука).
 - **A09** — не логировать: access token, webhook secret, `vcf_info`, callback payload, тела запросов с токеном.
@@ -527,8 +556,8 @@ source .env && docker run --rm --network host \
 15. Пакет — тонкий адаптер: не переписывать логику ядра, только делегировать.
 16. Версии ядра в этом файле — ориентир, не источник истины: проверяй `composer show geekcodev/max-php-client` и теги
     ядра, иначе легко сослаться на устаревший constraint.
-17. После содержательной сессии — файл в `.agents/journals/sessions/` и строка в `JOURNAL.md` (раздел 4.1): каталог в
-    git, поэтому эти записи — часть репозитория, а не мусор в рабочем дереве.
+17. После содержательной сессии — файл в `.agents/journals/sessions/` и строка таблицы в `JOURNAL.md` (раздел 4.1):
+    каталог в git, поэтому эти записи — часть репозитория, а не мусор в рабочем дереве.
 18. Идентификаторы в MAX бывают **отрицательными** (`chat_id` у групп и каналов) — колонки должны быть знаковыми.
     `unsignedBigInteger` отверг бы такой идентификатор на MySQL, а на SQLite это не воспроизводится: знаковость там
     игнорируется, поэтому объявление приходится проверять по исходникам миграций.

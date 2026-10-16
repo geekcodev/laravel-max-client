@@ -7,10 +7,34 @@ namespace GeekCo\LaravelMaxClient\Support;
 use GeekCo\LaravelMaxClient\Models\MaxChat;
 use GeekCo\LaravelMaxClient\Models\MaxChatUser;
 use GeekCo\LaravelMaxClient\Models\MaxUser;
+use GeekCo\MaxPhpClient\Enum\UpdateType;
 
 final readonly class Config
 {
     private const string KEY = 'laravel-max-client';
+
+    /**
+     * Типы апдейтов для webhook-подписки по умолчанию: полный список типов, которые
+     * потребляет адаптер (реестр чатов, метаданные, профили, телефон). Единственное
+     * место правды по дефолту — переопределяется webhook.update_types.
+     *
+     * @var list<string>
+     */
+    public const array DEFAULT_WEBHOOK_UPDATE_TYPES = [
+        UpdateType::MessageCreated->value,
+        UpdateType::MessageCallback->value,
+        UpdateType::MessageEdited->value,
+        UpdateType::MessageRemoved->value,
+        UpdateType::BotAdded->value,
+        UpdateType::BotStarted->value,
+        UpdateType::BotStopped->value,
+        UpdateType::BotRemoved->value,
+        UpdateType::DialogCleared->value,
+        UpdateType::DialogRemoved->value,
+        UpdateType::ChatTitleChanged->value,
+        UpdateType::UserAdded->value,
+        UpdateType::UserRemoved->value,
+    ];
 
     public function apiToken(): string
     {
@@ -115,6 +139,36 @@ final readonly class Config
         return $this->listOfStrings('webhook.allowed_hosts', []);
     }
 
+    /**
+     * Типы апдейтов для webhook-подписки (max:subscribe): webhook.update_types — строка
+     * через запятую или массив; пустое значение ключа не переопределяет дефолт. Это фильтр
+     * доставки подписки — Long Polling (max:listen) типы не фильтрует.
+     *
+     * @return list<string>
+     */
+    public function webhookUpdateTypes(): array
+    {
+        $value = config(self::KEY . '.webhook.update_types');
+
+        $raw = \is_array($value) ? $value : (\is_string($value) ? explode(',', $value) : []);
+
+        $types = [];
+        foreach ($raw as $item) {
+            if (!\is_string($item)) {
+                continue;
+            }
+
+            $item = trim($item);
+            if ($item !== '') {
+                $types[] = $item;
+            }
+        }
+
+        $types = array_values(array_unique($types));
+
+        return $types === [] ? self::DEFAULT_WEBHOOK_UPDATE_TYPES : $types;
+    }
+
     public function pollingLimit(): int
     {
         return $this->int('long_polling.limit', 100);
@@ -148,6 +202,11 @@ final readonly class Config
     public function webappSessionChatIdKey(): string
     {
         return $this->string('webapp.session.chat_id', 'chat_id');
+    }
+
+    public function webappSessionContactConfirmedKey(): string
+    {
+        return $this->string('webapp.session.contact_confirmed', 'contact_confirmed');
     }
 
     public function webappCspEnabled(): bool
