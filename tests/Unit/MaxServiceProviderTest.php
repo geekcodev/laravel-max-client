@@ -11,7 +11,9 @@ use GeekCo\LaravelMaxClient\Support\Config;
 use GeekCo\LaravelMaxClient\Support\Logger;
 use GeekCo\LaravelMaxClient\Tests\Support\MockHttpClient;
 use GeekCo\LaravelMaxClient\Tests\TestCase;
+use GeekCo\LaravelMaxClient\WebApp\WebAppContactService;
 use GeekCo\LaravelMaxClient\WebApp\WebAppContext;
+use GeekCo\LaravelMaxClient\WebApp\WebAppSession;
 use GeekCo\LaravelMaxClient\Webhook\HandleMaxUpdateJob;
 use GeekCo\LaravelMaxClient\Webhook\MaxUpdateReceived;
 use GeekCo\MaxPhpClient\ApiClient;
@@ -22,6 +24,7 @@ use GeekCo\MaxPhpClient\Exception\ApiException;
 use GeekCo\MaxPhpClient\Exception\RateLimitException;
 use GeekCo\MaxPhpClient\LongPolling\LongPollingRunner;
 use GeekCo\MaxPhpClient\RateLimit\RateLimiter;
+use GeekCo\MaxPhpClient\Security\WebAppContactVerifier;
 use GeekCo\MaxPhpClient\Security\WebAppDataValidator;
 use GuzzleHttp\Psr7\Response;
 use Illuminate\Contracts\Events\Dispatcher;
@@ -181,6 +184,30 @@ final class MaxServiceProviderTest extends TestCase
 
         $this->assertInstanceOf(WebAppContext::class, $context);
         $this->assertSame($context, $this->app->make(WebAppContext::class));
+    }
+
+    public function testWebAppContactVerifierIsBoundAsSingleton(): void
+    {
+        $verifier = $this->app->make(WebAppContactVerifier::class);
+
+        $this->assertInstanceOf(WebAppContactVerifier::class, $verifier);
+        $this->assertSame($verifier, $this->app->make(WebAppContactVerifier::class));
+    }
+
+    public function testWebAppContactServiceIsBoundAsSingleton(): void
+    {
+        $service = $this->app->make(WebAppContactService::class);
+
+        $this->assertInstanceOf(WebAppContactService::class, $service);
+        $this->assertSame($service, $this->app->make(WebAppContactService::class));
+    }
+
+    public function testWebAppSessionIsBoundAsSingleton(): void
+    {
+        $session = $this->app->make(WebAppSession::class);
+
+        $this->assertInstanceOf(WebAppSession::class, $session);
+        $this->assertSame($session, $this->app->make(WebAppSession::class));
     }
 
     public function testLongPollingRunnerIsBoundAsSingleton(): void

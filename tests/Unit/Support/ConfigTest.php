@@ -73,6 +73,22 @@ final class ConfigTest extends TestCase
         $this->assertTrue($config->pollingBreakOnFailure());
     }
 
+    public function testWebappSessionKeyDefaults(): void
+    {
+        $config = $this->config();
+
+        $this->assertSame('user_id', $config->webappSessionUserIdKey());
+        $this->assertSame('chat_id', $config->webappSessionChatIdKey());
+        $this->assertSame('contact_confirmed', $config->webappSessionContactConfirmedKey());
+    }
+
+    public function testWebappSessionContactConfirmedKeyIsConfigurable(): void
+    {
+        $this->app['config']->set(MaxServiceProvider::CONFIG_KEY . '.webapp.session.contact_confirmed', 'max_contact');
+
+        $this->assertSame('max_contact', $this->config()->webappSessionContactConfirmedKey());
+    }
+
     public function testLoggingDefaults(): void
     {
         $config = $this->config();

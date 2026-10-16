@@ -150,6 +150,11 @@ final readonly class Config
         return $this->string('webapp.session.chat_id', 'chat_id');
     }
 
+    public function webappSessionContactConfirmedKey(): string
+    {
+        return $this->string('webapp.session.contact_confirmed', 'contact_confirmed');
+    }
+
     public function webappCspEnabled(): bool
     {
         return $this->bool('webapp.frame_ancestors.enabled', true);

@@ -143,7 +143,8 @@ return [
     |
     | strict — если true, middleware max.webapp возвращает 403 при открытии
     | без валидного WebAppData. session — имена ключей сессии, в которые
-    | middleware кладёт user_id/chat_id.
+    | middleware кладёт user_id/chat_id; contact_confirmed — ключ флага
+    | подтверждённого контакта (значение — user_id, WebAppSession::confirm()).
     |
     */
 
@@ -153,6 +154,7 @@ return [
         'session' => [
             'user_id' => (string) env('MAX_WEBAPP_SESSION_USER_ID', 'user_id'),
             'chat_id' => (string) env('MAX_WEBAPP_SESSION_CHAT_ID', 'chat_id'),
+            'contact_confirmed' => (string) env('MAX_WEBAPP_SESSION_CONTACT_CONFIRMED', 'contact_confirmed'),
         ],
         'frame_ancestors' => [
             'enabled' => filter_var(env('MAX_WEBAPP_CSP_ENABLED', true), FILTER_VALIDATE_BOOLEAN),
