@@ -113,6 +113,20 @@ return [
         'path' => env('MAX_WEBHOOK_PATH', '/max/webhook'),
         'middleware' => ['throttle:60,1'],
         'allowed_hosts' => [],
+
+        /*
+         |--------------------------------------------------------------------------
+         | Типы апдейтов для webhook-подписки
+         |--------------------------------------------------------------------------
+         |
+         | max:subscribe передаёт их в update_types при создании подписки. Строка через
+         | запятую (env MAX_WEBHOOK_UPDATE_TYPES) либо массив в конфиге; пустое значение —
+         | дефолтный список пакета (Config::DEFAULT_WEBHOOK_UPDATE_TYPES, 13 типов).
+         | Фильтр действует только на доставку подписки — Long Polling типы не фильтрует.
+         |
+         */
+
+        'update_types' => env('MAX_WEBHOOK_UPDATE_TYPES'),
     ],
 
     /*

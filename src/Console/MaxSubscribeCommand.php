@@ -6,7 +6,6 @@ namespace GeekCo\LaravelMaxClient\Console;
 
 use GeekCo\LaravelMaxClient\Support\Config;
 use GeekCo\MaxPhpClient\ApiClient;
-use GeekCo\MaxPhpClient\Enum\UpdateType;
 use GeekCo\MaxPhpClient\Exception\MaxApiException;
 use Illuminate\Console\Command;
 
@@ -41,7 +40,7 @@ final class MaxSubscribeCommand extends Command
         try {
             $api->createSubscription(
                 url: $url,
-                updateTypes: $this->updateTypes(),
+                updateTypes: $config->webhookUpdateTypes(),
                 secret: $secret,
             );
         } catch (MaxApiException $exception) {
@@ -72,23 +71,5 @@ final class MaxSubscribeCommand extends Command
         }
 
         return in_array(strtolower((string) parse_url($url, PHP_URL_HOST)), $hosts, true);
-    }
-
-    /**
-     * @return list<string>
-     */
-    private function updateTypes(): array
-    {
-        return array_map(
-            static fn (UpdateType $type): string => $type->value,
-            [
-                UpdateType::MessageCreated,
-                UpdateType::MessageCallback,
-                UpdateType::BotAdded,
-                UpdateType::BotStarted,
-                UpdateType::BotStopped,
-                UpdateType::BotRemoved,
-            ],
-        );
     }
 }

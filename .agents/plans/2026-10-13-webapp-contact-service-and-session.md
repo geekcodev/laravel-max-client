@@ -82,5 +82,6 @@ Patch (v1.2.2). Имя ключа флага по умолчанию новое 
 
 ## Gate
 
-`composer lint` (php-cs-fixer) · `composer analyse` (PHPStan) · `composer test` (PHPUnit, testbench) · `composer audit`
-— 0. Затем release notes `.agents/release/RELEASE_NOTES_v1.2.2.md`, merge `dev → main`, тег `v1.2.2`.
+Gate по `AGENTS.md` §7: `composer run lint` (php-cs-fixer) · `vendor/bin/phpstan analyse` (level max) ·
+`vendor/bin/phpunit` (PHPUnit, testbench) · `composer run coverage` (≥95%) · `composer audit` — 0. Затем release notes
+`.agents/release/RELEASE_NOTES_v1.2.2.md`, merge `dev → main`, тег `v1.2.2`.
