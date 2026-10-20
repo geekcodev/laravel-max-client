@@ -78,6 +78,62 @@ final class MaxContactServiceTest extends TestCase
         $this->assertNull($this->service()->phoneFromUpdate($update));
     }
 
+    /**
+     * Контакт без подписи: ядро с v1.1.11 разбирает отсутствующий или null-`hash`
+     * в пустую строку, а не роняет апдейт. Телефон из него считается
+     * неподтверждённым (fail-closed), номер не сохраняется.
+     */
+    public function testContactWithoutHashYieldsNoPhone(): void
+    {
+        $update = $this->contactUpdate($this->vcf(), hash: '');
+
+        $this->assertNull($this->service()->phoneFromUpdate($update));
+        $this->assertFalse($this->service()->isTrusted($update));
+    }
+
+    /**
+     * То же самое, но вложение разбирается из payload реального вебхука:
+     * подтверждаем, что путь «MAX прислал контакт без hash» доходит до сервиса,
+     * а не отклоняется на разборе.
+     */
+    public function testContactDecodedWithoutHashYieldsNoPhone(): void
+    {
+        $payload = $this->updatePayload([
+            'message' => [
+                'sender' => $this->user()->toArray(),
+                'recipient' => ['chat_id' => 222, 'chat_type' => 'dialog'],
+                'timestamp' => 1000,
+                'body' => [
+                    'mid' => 'b1',
+                    'seq' => 0,
+                    'attachments' => [
+                        [
+                            'type' => 'contact',
+                            'payload' => ['vcf_info' => $this->vcf()],
+                        ],
+                    ],
+                ],
+            ],
+        ]);
+
+        $update = Update::fromArray($payload);
+
+        $this->assertNull($this->service()->phoneFromUpdate($update));
+        $this->assertFalse($this->service()->isTrusted($update));
+    }
+
+    /**
+     * Контакт без подписи не доходит и до телефона: номер не сохраняется,
+     * несмотря на то что апдейт остаётся валидным.
+     */
+    public function testUnsignedContactIsNotTrusted(): void
+    {
+        $update = $this->contactUpdate($this->vcf(), hash: '');
+
+        $this->assertFalse($this->service()->isTrusted($update));
+        $this->assertNull($this->service()->phoneFromUpdate($update));
+    }
+
     public function testMissingContactAttachmentYieldsNoPhone(): void
     {
         $update = new Update(

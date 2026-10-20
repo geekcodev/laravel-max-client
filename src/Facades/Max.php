@@ -23,7 +23,7 @@ use Illuminate\Support\Facades\Facade;
  * @method static \GeekCo\MaxPhpClient\Dto\SuccessResponse addChatAdmin(int $chatId, int $userId, array<int, \GeekCo\MaxPhpClient\Enum\ChatAdminPermission> $permissions, ?string $alias = null, ?int $marker = null)
  * @method static \GeekCo\MaxPhpClient\Dto\SuccessResponse removeChatAdmin(int $chatId, int $userId)
  * @method static \GeekCo\MaxPhpClient\Dto\ChatMembersResult getChatMembers(int $chatId, ?array<int, int> $userIds = null, ?int $marker = null, ?int $count = null)
- * @method static \GeekCo\MaxPhpClient\Dto\AddChatMembersResult addChatMembers(int $chatId, array<int, int> $userIds) deprecated в ядре с v1.1.6: добавление участников недоступно ботам
+ * @method static \GeekCo\MaxPhpClient\Dto\AddChatMembersResult addChatMembers(int $chatId, array<int, int> $userIds) с 9 сентября 2026 ограничен со стороны MAX; в спеке присутствует, пометки об удалении нет
  * @method static \GeekCo\MaxPhpClient\Dto\SuccessResponse removeChatMember(int $chatId, int $userId, bool $block = false)
  * @method static array<int, \GeekCo\MaxPhpClient\Dto\Subscription> getSubscriptions()
  * @method static \GeekCo\MaxPhpClient\Dto\SuccessResponse createSubscription(string $url, ?array<int, string> $updateTypes = null, ?string $secret = null)

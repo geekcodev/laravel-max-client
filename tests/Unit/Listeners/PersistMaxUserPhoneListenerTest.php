@@ -125,6 +125,43 @@ final class PersistMaxUserPhoneListenerTest extends TestCase
         $this->assertNull(MaxUser::query()->findOrFail(111)->phone);
     }
 
+    /**
+     * Регрессия ядра v1.1.11: контакт без `hash` (поле nullable в спеке) больше
+     * не роняет апдейт, но подпись не проходит, поэтому телефон не сохраняется.
+     */
+    public function testContactDecodedWithoutHashIsIgnored(): void
+    {
+        $this->makeUser(111);
+
+        $vcf = "BEGIN:VCARD\r\nVERSION:3.0\r\nTEL;TYPE=cell:" . self::PHONE . "\r\nEND:VCARD\r\n";
+
+        $payload = [
+            'update_type' => 'message_created',
+            'timestamp' => 1700000000000,
+            'chat_id' => 222,
+            'user' => $this->user()->toArray(),
+            'message' => [
+                'sender' => $this->user()->toArray(),
+                'recipient' => ['chat_id' => 222, 'chat_type' => 'dialog'],
+                'timestamp' => 1700000000000,
+                'body' => [
+                    'mid' => 'b1',
+                    'seq' => 0,
+                    'attachments' => [
+                        [
+                            'type' => 'contact',
+                            'payload' => ['vcf_info' => $vcf],
+                        ],
+                    ],
+                ],
+            ],
+        ];
+
+        $this->dispatch(Update::fromArray($payload));
+
+        $this->assertNull(MaxUser::query()->findOrFail(111)->phone);
+    }
+
     public function testMessageWithoutContactIsIgnored(): void
     {
         $this->makeUser(111);
