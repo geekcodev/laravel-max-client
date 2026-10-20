@@ -17,7 +17,7 @@
   `geekcodev/laravel-max-client`). Актуальную версию всегда уточняй по `git tag --sort=-v:refname | head -1` и
   `git log --oneline -10`, а не по этому файлу. Незакоммиченная работа лежит в `dev`.
 - **Ядро.** `geekcodev/max-php-client` (namespace `GeekCo\MaxPhpClient`) — последний тег на момент последней
-  синхронизации **v1.1.10**, constraint в `composer.json` — `^1.1.10`. Ядро даёт PSR-7/17/18 транспорт, ретраи, rate
+  синхронизации **v1.1.11**, constraint в `composer.json` — `^1.1.11`. Ядро даёт PSR-7/17/18 транспорт, ретраи, rate
   limit, загрузку медиа, webhook-хендлер, верификацию контакта, данных мини-приложения и контакта из моста
   `requestContact` (`WebAppContactVerifier`, с v1.1.10). **Фактические версии проверяй динамически**:
   `composer show geekcodev/max-php-client` и `git -C ../max-php-client tag --sort=-v:refname |
@@ -411,14 +411,16 @@ scripts/check-coverage.php         порог покрытия строк (по 
 - Тесты обязательны для нового кода: unit на компоненты пакета; HTTP-слой — через `tests/Support/MockHttpClient`
   (PSR-18) или подмену `ClientInterface` в контейнере Testbench. Интеграционные — read-only, группа `integration`, без
   токена `markTestSkipped` (не падать).
-- `composer.json` constraints на момент разработки: `php ^8.4`, `geekcodev/max-php-client ^1.1.10` (комментарии и
+- `composer.json` constraints на момент разработки: `php ^8.4`, `geekcodev/max-php-client ^1.1.11` (терпимый `hash`
+  в контакте и метаданные вложений v1.1.11, комментарии и
   разметка в ответах, 19 типов обновлений, DTO `Chat` с `dialog_with_user` — с v1.1.0 ядра; `WebAppDataValidator`
   появился в v1.0.1; `Update::$user` nullable и фолбэки `user`/`chat_id` — с v1.0.3; `ApiClient::create()` с
   `global_rate_limiter`, deprecated-права админов и пустое тело `sendAnswer` — с v1.0.6; Comments API (`getComments`/
   `sendComment`/`editComment`/`deleteComment`/`getComment`), `getUpdatesBatch`, `UploadResult` →
   `UploadedInfo`, `sendAnswer` с `notification`/`disableLinkPreview`, `Update::$comment` и события комментариев — с
   v1.1.6 — версия ниже не резолвит актуальные сигнатуры; `ContactPhoneExtractor::fromVcf()` — с v1.1.7;
-  `Security\WebAppContactVerifier` и `Dto\WebAppContact` (контакт из моста `requestContact`) — с v1.1.10),
+  `Security\WebAppContactVerifier` и `Dto\WebAppContact` (контакт из моста `requestContact`) — с v1.1.10; терпимый
+  `hash` в `ContactAttachmentPayload`, `Attachment::$filename` и метаданные вложений — с v1.1.11),
   `laravel/framework ^12.0|^13.0`, `guzzlehttp/guzzle ^7.15`
   (обязателен как PSR-18 по умолчанию), `illuminate/support`/`illuminate/queue`/`illuminate/routing` — через
   `laravel/framework`; dev — Testbench под поддерживаемую версию Laravel, phpunit ^11.5, phpstan ^2.0,
@@ -437,7 +439,7 @@ scripts/check-coverage.php         порог покрытия строк (по 
 - **A05** — publishable-конфиг с безопасными дефолтами; `php artisan config:cache` безопасен для `env()`
   (использовать только на этапе конфига); секреты не попадают в `config:show` без необходимости (документировать
   маскирование при выводе).
-- **A06/A08** — актуальные зависимости: PHP ^8.4, ядро `^1.1.10` (фактическая версия — динамически, раздел 1),
+- **A06/A08** — актуальные зависимости: PHP ^8.4, ядро `^1.1.11` (фактическая версия — динамически, раздел 1),
   `composer audit` в Gate и CI; CI на push/PR.
 - **A07** — все сравнения секретов — только `hash_equals` (ядро + middleware вебхука).
 - **A09** — не логировать: access token, webhook secret, `vcf_info`, callback payload, тела запросов с токеном.
@@ -453,8 +455,11 @@ scripts/check-coverage.php         порог покрытия строк (по 
 содержимое здесь не нужно.
 
 - Аутентификация: `Authorization: <access_token>` без `Bearer`; query-передача токена не поддерживается.
-
 - Сервер: `https://platform-api2.max.ru` (домен **`platform-api2`**).
+- Контакт без подписи: `hash` в `ContactAttachmentPayload` объявлен в спеке nullable, и апдейт с контактом без `hash`
+  (или с `hash: null`) не отклоняется на разборе — ядро с v1.1.11 даёт пустой `hash`,
+  `ContactVerifier::verify()` возвращает `false`, и номер из такого контакта не считается подтверждённым.
+  До v1.1.11 такой апдейт ронял разбор и контроллер отвечал `400 invalid_payload` — апдейт терялся целиком.
 - Нужна цепочка сертификатов Минцифры (в локальных средах — кастомный CA).
 - Вебхуки — только HTTPS :443, доверенный CA, полная цепочка; секрет 5–256 символов `[a-zA-Z0-9_-]`; ответ обязателен
   200 за 30 сек, иначе повторы 60с→150с→375с→… (10 попыток ~8ч), затем автоотписка.

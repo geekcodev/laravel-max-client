@@ -83,6 +83,40 @@ final class MaxWebhookControllerTest extends TestCase
         Queue::assertPushed(HandleMaxUpdateJob::class, 0);
     }
 
+    /**
+     * Регрессия ядра v1.1.11: `hash` в contact-вложении объявлен nullable, и
+     * апдейт с контактом без подписи больше не отклоняется на разборе — он
+     * доходит до обработчика (сам телефон остаётся неподтверждённым).
+     */
+    public function testDecodesContactAttachmentWithoutHash(): void
+    {
+        Queue::fake();
+        $this->listenToUpdates();
+
+        $payload = $this->updatePayload([
+            'message' => [
+                'sender' => $this->updatePayload()['user'],
+                'recipient' => ['chat_id' => 42, 'chat_type' => 'dialog'],
+                'timestamp' => 1700000000000,
+                'body' => [
+                    'mid' => 'b1',
+                    'seq' => 0,
+                    'attachments' => [
+                        [
+                            'type' => 'contact',
+                            'payload' => ['vcf_info' => "BEGIN:VCARD\r\nTEL;TYPE=cell:79250000000\r\nEND:VCARD\r\n"],
+                        ],
+                    ],
+                ],
+            ],
+        ]);
+
+        $response = $this->postJson('/max/webhook', $payload, [self::SECRET_HEADER => 'test-secret']);
+
+        $response->assertStatus(200)->assertJson(['ok' => true]);
+        Queue::assertPushed(HandleMaxUpdateJob::class, 1);
+    }
+
     public function testLogsExceptionMessageWhenPayloadIsRejected(): void
     {
         Queue::fake();
