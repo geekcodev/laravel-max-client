@@ -9,6 +9,7 @@ use GeekCo\LaravelMaxClient\Tests\TestCase;
 use GeekCo\LaravelMaxClient\Webhook\HandleMaxUpdateJob;
 use GeekCo\LaravelMaxClient\Webhook\MaxUpdateReceived;
 use GeekCo\LaravelMaxClient\Webhook\MaxWebhookController;
+use GeekCo\MaxPhpClient\Dto\Update\MessageCreatedUpdate;
 use Illuminate\Contracts\Events\Dispatcher;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Http\Request;
@@ -36,7 +37,9 @@ final class MaxWebhookControllerTest extends TestCase
 
         $response->assertStatus(200)->assertJson(['ok' => true]);
         Queue::assertPushed(HandleMaxUpdateJob::class, static function (HandleMaxUpdateJob $job): bool {
-            return $job->update->chatId === 42 && $job->update->updateType->value === 'message_created';
+            return $job->update instanceof MessageCreatedUpdate
+                && $job->update->message->recipient->chatId === 42
+                && $job->update->updateType === 'message_created';
         });
     }
 
@@ -95,7 +98,7 @@ final class MaxWebhookControllerTest extends TestCase
 
         $payload = $this->updatePayload([
             'message' => [
-                'sender' => $this->updatePayload()['user'],
+                'sender' => $this->userPayload(),
                 'recipient' => ['chat_id' => 42, 'chat_type' => 'dialog'],
                 'timestamp' => 1700000000000,
                 'body' => [

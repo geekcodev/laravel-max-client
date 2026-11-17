@@ -17,8 +17,8 @@ use GeekCo\MaxPhpClient\Enum\TextFormat;
 $me = Max::getMe();
 echo 'Бот: @' . $me->username . PHP_EOL;
 
-// chat_id / user_id — int64. Для диалога/чата/канала брать из Update
-// (см. examples/webhook-listener.php), а не из GET /chats (deprecated).
+// chat_id / user_id — int64. Для диалога/чата/канала брать из типизированного
+// Update (см. examples/webhook-listener.php): GET /chats удалён в ядре v2.0.0.
 $chatId = 1234567890;
 
 // Простое сообщение в диалог/чат/канал.
@@ -44,8 +44,8 @@ Max::sendMessage(
 );
 
 // Фасад делегирует все методы ядра (PHPDoc @method в Facades\Max) —
-// примеры API v1.0.3: typing-статус и список админов чата.
-Max::sendBotAction($chatId, SenderAction::TypingOn);
+// примеры: статус «печатает» и список админов чата.
+Max::sendChatAction($chatId, SenderAction::TypingOn);
 $admins = Max::getChatAdmins($chatId); // ChatAdminsResult::$members
 foreach ($admins->members as $admin) {
     echo 'Админ: @' . ($admin->username ?? (string) $admin->userId) . PHP_EOL;

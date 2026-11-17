@@ -6,10 +6,13 @@ namespace GeekCo\LaravelMaxClient\Services;
 
 use GeekCo\LaravelMaxClient\Support\Config;
 use GeekCo\LaravelMaxClient\Support\Logger;
+use GeekCo\LaravelMaxClient\Support\UpdateInfo;
+use GeekCo\MaxPhpClient\Dto\Attachment\ContactAttachment;
 use GeekCo\MaxPhpClient\Dto\ContactAttachmentPayload;
+use GeekCo\MaxPhpClient\Dto\Message;
 use GeekCo\MaxPhpClient\Dto\Update;
-use GeekCo\MaxPhpClient\Enum\AttachmentType;
-use GeekCo\MaxPhpClient\Enum\UpdateType;
+use GeekCo\MaxPhpClient\Dto\Update\MessageCallbackUpdate;
+use GeekCo\MaxPhpClient\Dto\Update\MessageCreatedUpdate;
 use GeekCo\MaxPhpClient\Security\ContactPhoneExtractor;
 use GeekCo\MaxPhpClient\Security\ContactVerifier;
 
@@ -22,8 +25,8 @@ use GeekCo\MaxPhpClient\Security\ContactVerifier;
  *
  * Во входящем payload MAX не присылает vcf_phone (поле есть только в исходящем
  * ContactAttachmentRequestPayload, который бот кладёт сам), поэтому номер берётся
- * разбором vcf_info. Значение vcf_phone приоритет имеет: если MAX начнёт его
- * присылать, адаптер продолжит работать без изменений.
+ * разбором vcf_info. В ядре v2.0.0 поле vcfPhone из входящего DTO удалено, так
+ * что запасного источника номера больше нет — это соответствует реалям API.
  *
  * Номер возвращается как есть — ядро его не нормализует и не валидирует.
  * Канонизация под формат потребителя (например, приведение к +7XXXXXXXXXX)
@@ -74,16 +77,10 @@ final class MaxContactService
     }
 
     /**
-     * Приоритет у vcf_phone (если MAX его пришлёт), иначе разбор vcf_info.
+     * Номер из разобранного vCard. Пустой или неразбираемый vcf_info даёт null.
      */
     public function phoneFromAttachment(ContactAttachmentPayload $attachment): ?string
     {
-        $phone = $attachment->vcfPhone;
-
-        if ($phone !== null && trim($phone) !== '') {
-            return trim($phone);
-        }
-
         if ($attachment->vcfInfo === null) {
             return null;
         }
@@ -99,9 +96,11 @@ final class MaxContactService
             return true;
         }
 
+        $info = UpdateInfo::from($update);
+
         $this->logger->log('warning', 'MAX contact signature mismatch; phone ignored.', [
-            'chat_id' => $update->chatId,
-            'user_id' => $update->user !== null ? $update->user->userId : $update->userId,
+            'chat_id' => $info->chatId,
+            'user_id' => $info->userId,
         ]);
 
         return false;
@@ -109,26 +108,30 @@ final class MaxContactService
 
     private function contactAttachment(Update $update): ?ContactAttachmentPayload
     {
-        if (!\in_array($update->updateType, [UpdateType::MessageCreated, UpdateType::MessageCallback], true)) {
-            return null;
-        }
-
-        $message = $update->message ?? $update->callback?->message;
+        $message = $this->contactMessage($update);
 
         if ($message === null) {
             return null;
         }
 
         foreach ($message->body->attachments ?? [] as $attachment) {
-            if ($attachment->type !== AttachmentType::Contact) {
-                continue;
-            }
-
-            if ($attachment->payload instanceof ContactAttachmentPayload) {
+            if ($attachment instanceof ContactAttachment) {
                 return $attachment->payload;
             }
         }
 
         return null;
+    }
+
+    /**
+     * Контакт приходит только в новом сообщении или в сообщении нажатой кнопки.
+     */
+    private function contactMessage(Update $update): ?Message
+    {
+        return match (true) {
+            $update instanceof MessageCreatedUpdate => $update->message,
+            $update instanceof MessageCallbackUpdate => $update->message,
+            default => null,
+        };
     }
 }

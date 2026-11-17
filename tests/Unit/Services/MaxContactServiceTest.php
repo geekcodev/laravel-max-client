@@ -10,15 +10,19 @@ use GeekCo\LaravelMaxClient\Support\Config;
 use GeekCo\LaravelMaxClient\Support\Logger;
 use GeekCo\LaravelMaxClient\Tests\TestCase;
 use GeekCo\MaxPhpClient\Dto\Attachment;
+use GeekCo\MaxPhpClient\Dto\Attachment\ContactAttachment;
+use GeekCo\MaxPhpClient\Dto\Attachment\LocationAttachment;
 use GeekCo\MaxPhpClient\Dto\Callback;
 use GeekCo\MaxPhpClient\Dto\ContactAttachmentPayload;
 use GeekCo\MaxPhpClient\Dto\Message;
 use GeekCo\MaxPhpClient\Dto\MessageBody;
 use GeekCo\MaxPhpClient\Dto\Recipient;
 use GeekCo\MaxPhpClient\Dto\Update;
+use GeekCo\MaxPhpClient\Dto\Update\BotAddedToChatUpdate;
+use GeekCo\MaxPhpClient\Dto\Update\MessageCallbackUpdate;
+use GeekCo\MaxPhpClient\Dto\Update\MessageCreatedUpdate;
 use GeekCo\MaxPhpClient\Dto\User;
-use GeekCo\MaxPhpClient\Enum\AttachmentType;
-use GeekCo\MaxPhpClient\Enum\UpdateType;
+use GeekCo\MaxPhpClient\Enum\ChatType;
 use GeekCo\MaxPhpClient\Security\ContactPhoneExtractor;
 
 final class MaxContactServiceTest extends TestCase
@@ -64,11 +68,36 @@ final class MaxContactServiceTest extends TestCase
         $this->assertSame('79250000000', $this->service()->phoneFromUpdate($this->contactUpdate($vcf)));
     }
 
-    public function testVcfPhoneFromPayloadTakesPrecedence(): void
+    /**
+     * В ядре v2.0.0 поле vcf_phone удалено из входящего DTO: API его не присылает,
+     * поэтому номер берётся только разбором vcf_info. Лишнее поле в payload не
+     * ломает разбор и не подменяет номер.
+     */
+    public function testLegacyVcfPhoneFieldIsIgnored(): void
     {
-        $update = $this->contactUpdate($this->vcf(), vcfPhone: '+7 925 000 00 00');
+        $payload = $this->messageUpdatePayload([
+            'message' => [
+                'sender' => $this->user()->toArray(),
+                'recipient' => ['chat_id' => 222, 'chat_type' => 'dialog'],
+                'timestamp' => 1000,
+                'body' => [
+                    'mid' => 'b1',
+                    'seq' => 0,
+                    'attachments' => [
+                        [
+                            'type' => 'contact',
+                            'payload' => [
+                                'hash' => $this->hash($this->vcf()),
+                                'vcf_info' => $this->vcf(),
+                                'vcf_phone' => '+7 925 000 00 00',
+                            ],
+                        ],
+                    ],
+                ],
+            ],
+        ]);
 
-        $this->assertSame('+7 925 000 00 00', $this->service()->phoneFromUpdate($update));
+        $this->assertSame(self::PHONE, $this->service()->phoneFromUpdate(Update::fromArray($payload)));
     }
 
     public function testBrokenSignatureYieldsNoPhone(): void
@@ -79,9 +108,9 @@ final class MaxContactServiceTest extends TestCase
     }
 
     /**
-     * Контакт без подписи: ядро с v1.1.11 разбирает отсутствующий или null-`hash`
-     * в пустую строку, а не роняет апдейт. Телефон из него считается
-     * неподтверждённым (fail-closed), номер не сохраняется.
+     * Контакт без подписи: отсутствующий или null-`hash` разбирается ядром в
+     * null, апдейт не роняется. Телефон из него считается неподтверждённым
+     * (fail-closed), номер не сохраняется.
      */
     public function testContactWithoutHashYieldsNoPhone(): void
     {
@@ -98,7 +127,7 @@ final class MaxContactServiceTest extends TestCase
      */
     public function testContactDecodedWithoutHashYieldsNoPhone(): void
     {
-        $payload = $this->updatePayload([
+        $payload = $this->messageUpdatePayload([
             'message' => [
                 'sender' => $this->user()->toArray(),
                 'recipient' => ['chat_id' => 222, 'chat_type' => 'dialog'],
@@ -122,26 +151,11 @@ final class MaxContactServiceTest extends TestCase
         $this->assertFalse($this->service()->isTrusted($update));
     }
 
-    /**
-     * Контакт без подписи не доходит и до телефона: номер не сохраняется,
-     * несмотря на то что апдейт остаётся валидным.
-     */
-    public function testUnsignedContactIsNotTrusted(): void
-    {
-        $update = $this->contactUpdate($this->vcf(), hash: '');
-
-        $this->assertFalse($this->service()->isTrusted($update));
-        $this->assertNull($this->service()->phoneFromUpdate($update));
-    }
-
     public function testMissingContactAttachmentYieldsNoPhone(): void
     {
-        $update = new Update(
-            updateType: UpdateType::MessageCreated,
-            timestamp: 1000,
-            user: $this->user(),
-            chatId: 222,
+        $update = new MessageCreatedUpdate(
             message: $this->message([]),
+            timestamp: 1000,
         );
 
         $this->assertNull($this->service()->phoneFromUpdate($update));
@@ -149,14 +163,11 @@ final class MaxContactServiceTest extends TestCase
 
     public function testAttachmentOfAnotherTypeIsIgnored(): void
     {
-        $update = new Update(
-            updateType: UpdateType::MessageCreated,
-            timestamp: 1000,
-            user: $this->user(),
-            chatId: 222,
+        $update = new MessageCreatedUpdate(
             message: $this->message([
-                new Attachment(type: AttachmentType::Location, latitude: 1.0, longitude: 2.0),
+                new LocationAttachment(latitude: 1.0, longitude: 2.0),
             ]),
+            timestamp: 1000,
         );
 
         $this->assertNull($this->service()->phoneFromUpdate($update));
@@ -178,13 +189,11 @@ final class MaxContactServiceTest extends TestCase
 
     public function testNonMessageUpdateIsIgnored(): void
     {
-        $vcf = $this->vcf();
-        $update = new Update(
-            updateType: UpdateType::BotAdded,
-            timestamp: 1000,
-            user: $this->user(),
+        $update = new BotAddedToChatUpdate(
             chatId: 222,
-            message: $this->message([$this->attachment($vcf)]),
+            user: $this->user(),
+            isChannel: false,
+            timestamp: 1000,
         );
 
         $this->assertNull($this->service()->phoneFromUpdate($update));
@@ -204,30 +213,31 @@ final class MaxContactServiceTest extends TestCase
         $vcf = $this->vcf();
         $message = $this->message([$this->attachment($vcf)]);
 
-        $update = new Update(
-            updateType: UpdateType::MessageCallback,
+        $update = new MessageCallbackUpdate(
+            callback: new Callback(callbackId: 'cb-1', user: $this->user()),
+            message: $message,
             timestamp: 1000,
-            user: $this->user(),
-            chatId: 222,
-            callback: new Callback(callbackId: 'cb-1', message: $message),
         );
 
         $this->assertTrue($this->service()->isTrusted($update));
         $this->assertSame(self::PHONE, $this->service()->phoneFromUpdate($update));
     }
 
-    public function testAttachmentWithNonContactPayloadIsSkipped(): void
+    /**
+     * В типизированной модели контакт — это ContactAttachment, поэтому подмена
+     * payload чужого типа больше невозможна; неподписанный контакт остаётся
+     * fail-closed.
+     */
+    public function testUnsignedContactAttachmentIsNotTrusted(): void
     {
-        $update = new Update(
-            updateType: UpdateType::MessageCreated,
-            timestamp: 1000,
-            user: $this->user(),
-            chatId: 222,
+        $update = new MessageCreatedUpdate(
             message: $this->message([
-                new Attachment(type: AttachmentType::Contact, payload: ['hash' => 'x']),
+                new ContactAttachment(new ContactAttachmentPayload(vcfInfo: $this->vcf())),
             ]),
+            timestamp: 1000,
         );
 
+        $this->assertFalse($this->service()->isTrusted($update));
         $this->assertNull($this->service()->phoneFromUpdate($update));
     }
 
@@ -253,29 +263,22 @@ final class MaxContactServiceTest extends TestCase
         );
     }
 
-    private function contactUpdate(string $vcf, ?string $hash = null, ?string $vcfPhone = null): Update
+    private function contactUpdate(string $vcf, ?string $hash = null): MessageCreatedUpdate
     {
-        return new Update(
-            updateType: UpdateType::MessageCreated,
-            timestamp: 1000,
-            user: $this->user(),
-            chatId: 222,
+        return new MessageCreatedUpdate(
             message: $this->message([
-                $this->attachment($vcf, $hash, $vcfPhone),
+                $this->attachment($vcf, $hash),
             ]),
+            timestamp: 1000,
         );
     }
 
-    private function attachment(string $vcf, ?string $hash = null, ?string $vcfPhone = null): Attachment
+    private function attachment(string $vcf, ?string $hash = null): ContactAttachment
     {
-        return new Attachment(
-            type: AttachmentType::Contact,
-            payload: new ContactAttachmentPayload(
-                hash: $hash ?? $this->hash($vcf),
-                vcfInfo: $vcf,
-                vcfPhone: $vcfPhone,
-            ),
-        );
+        return new ContactAttachment(new ContactAttachmentPayload(
+            hash: $hash ?? $this->hash($vcf),
+            vcfInfo: $vcf,
+        ));
     }
 
     /**
@@ -285,7 +288,7 @@ final class MaxContactServiceTest extends TestCase
     {
         return new Message(
             sender: $this->user(),
-            recipient: new Recipient(chatId: 222, chatType: 'dialog'),
+            recipient: new Recipient(chatId: 222, chatType: ChatType::Dialog),
             timestamp: 1000,
             body: new MessageBody(mid: 'b1', seq: 0, attachments: $attachments),
         );
@@ -300,5 +303,14 @@ final class MaxContactServiceTest extends TestCase
             username: null,
             isBot: false,
         );
+    }
+
+    /**
+     * @param array<string, mixed> $data
+     * @return array<string, mixed>
+     */
+    private function messageUpdatePayload(array $data): array
+    {
+        return ['update_type' => 'message_created', 'timestamp' => 1000, ...$data];
     }
 }

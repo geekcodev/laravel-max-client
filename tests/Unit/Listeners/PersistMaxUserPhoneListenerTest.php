@@ -11,14 +11,21 @@ use GeekCo\LaravelMaxClient\Models\MaxUser;
 use GeekCo\LaravelMaxClient\Tests\TestCase;
 use GeekCo\LaravelMaxClient\Webhook\MaxUpdateReceived;
 use GeekCo\MaxPhpClient\Dto\Attachment;
+use GeekCo\MaxPhpClient\Dto\Attachment\ContactAttachment;
+use GeekCo\MaxPhpClient\Dto\Callback;
+use GeekCo\MaxPhpClient\Dto\CommentMessage;
+use GeekCo\MaxPhpClient\Dto\CommentMessageBody;
 use GeekCo\MaxPhpClient\Dto\ContactAttachmentPayload;
 use GeekCo\MaxPhpClient\Dto\Message;
 use GeekCo\MaxPhpClient\Dto\MessageBody;
 use GeekCo\MaxPhpClient\Dto\Recipient;
 use GeekCo\MaxPhpClient\Dto\Update;
+use GeekCo\MaxPhpClient\Dto\Update\BotAddedToChatUpdate;
+use GeekCo\MaxPhpClient\Dto\Update\CommentCreatedUpdate;
+use GeekCo\MaxPhpClient\Dto\Update\MessageCallbackUpdate;
+use GeekCo\MaxPhpClient\Dto\Update\MessageCreatedUpdate;
 use GeekCo\MaxPhpClient\Dto\User;
-use GeekCo\MaxPhpClient\Enum\AttachmentType;
-use GeekCo\MaxPhpClient\Enum\UpdateType;
+use GeekCo\MaxPhpClient\Enum\ChatType;
 use Illuminate\Contracts\Events\Dispatcher;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Log;
@@ -166,12 +173,9 @@ final class PersistMaxUserPhoneListenerTest extends TestCase
     {
         $this->makeUser(111);
 
-        $this->dispatch(new Update(
-            updateType: UpdateType::MessageCreated,
-            timestamp: 1000,
-            user: $this->user(),
-            chatId: 222,
+        $this->dispatch(new MessageCreatedUpdate(
             message: $this->message([]),
+            timestamp: 1000,
         ));
 
         $this->assertNull(MaxUser::query()->findOrFail(111)->phone);
@@ -181,27 +185,28 @@ final class PersistMaxUserPhoneListenerTest extends TestCase
     {
         $this->makeUser(111);
 
-        $this->dispatch(new Update(
-            updateType: UpdateType::CommentCreated,
+        $this->dispatch(new CommentCreatedUpdate(
+            message: new CommentMessage(
+                recipient: new Recipient(chatId: 222, chatType: ChatType::Channel, postId: 'mid_post'),
+                timestamp: 1000,
+                body: new CommentMessageBody(mid: 'c1', seq: 0),
+                sender: $this->user(),
+            ),
             timestamp: 1000,
-            user: $this->user(),
-            chatId: 222,
         ));
 
         $this->assertNull(MaxUser::query()->findOrFail(111)->phone);
     }
 
-    public function testBotAddedWithContactAttachmentIsIgnored(): void
+    public function testBotAddedIsIgnored(): void
     {
         $this->makeUser(111);
 
-        $this->dispatch(new Update(
-            updateType: UpdateType::BotAdded,
-            timestamp: 1000,
-            user: $this->user(),
+        $this->dispatch(new BotAddedToChatUpdate(
             chatId: 222,
+            user: $this->user(),
             isChannel: false,
-            message: $this->message([$this->contactAttachment()]),
+            timestamp: 1000,
         ));
 
         $this->assertNull(MaxUser::query()->findOrFail(111)->phone);
@@ -247,15 +252,10 @@ final class PersistMaxUserPhoneListenerTest extends TestCase
     {
         $this->makeUser(111);
 
-        $this->dispatch(new Update(
-            updateType: UpdateType::MessageCallback,
+        $this->dispatch(new MessageCallbackUpdate(
+            callback: new Callback(callbackId: 'cb-1', user: $this->user()),
+            message: $this->message([$this->contactAttachment()]),
             timestamp: 1000,
-            user: $this->user(),
-            chatId: 222,
-            callback: new \GeekCo\MaxPhpClient\Dto\Callback(
-                callbackId: 'cb-1',
-                message: $this->message([$this->contactAttachment()]),
-            ),
         ));
 
         $this->assertSame(self::PHONE, MaxUser::query()->findOrFail(111)->phone);
@@ -308,28 +308,22 @@ final class PersistMaxUserPhoneListenerTest extends TestCase
         return hash_hmac('sha256', $vcfInfo, self::TOKEN);
     }
 
-    private function contactUpdate(?string $hash = null): Update
+    private function contactUpdate(?string $hash = null): MessageCreatedUpdate
     {
-        return new Update(
-            updateType: UpdateType::MessageCreated,
-            timestamp: 1000,
-            user: $this->user(),
-            chatId: 222,
+        return new MessageCreatedUpdate(
             message: $this->message([$this->contactAttachment($hash)]),
+            timestamp: 1000,
         );
     }
 
-    private function contactAttachment(?string $hash = null): Attachment
+    private function contactAttachment(?string $hash = null): ContactAttachment
     {
         $vcf = $this->vcf();
 
-        return new Attachment(
-            type: AttachmentType::Contact,
-            payload: new ContactAttachmentPayload(
-                hash: $hash ?? $this->hash($vcf),
-                vcfInfo: $vcf,
-            ),
-        );
+        return new ContactAttachment(new ContactAttachmentPayload(
+            hash: $hash ?? $this->hash($vcf),
+            vcfInfo: $vcf,
+        ));
     }
 
     /**
@@ -339,7 +333,7 @@ final class PersistMaxUserPhoneListenerTest extends TestCase
     {
         return new Message(
             sender: $this->user(),
-            recipient: new Recipient(chatId: 222, chatType: 'dialog'),
+            recipient: new Recipient(chatId: 222, chatType: ChatType::Dialog),
             timestamp: 1000,
             body: new MessageBody(mid: 'b1', seq: 0, attachments: $attachments),
         );

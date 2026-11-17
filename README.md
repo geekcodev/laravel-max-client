@@ -11,8 +11,8 @@
 
 - PHP ^8.4
 - Laravel ^12.0|^13.0
-- `geekcodev/max-php-client` ^1.1.11 (Comments API, `getUpdatesBatch`, `UploadedInfo`, `WebAppContactVerifier`,
-  устойчивый разбор вложений v1.1.11)
+- `geekcodev/max-php-client` ^2.0 (типизированные `Update`/вложения/кнопки/разметка, `UpdateList`,
+  `SimpleQueryResult`, `UploadEndpoint`)
 
 ## Установка
 
@@ -91,12 +91,12 @@ Max::sendMessage(
 
 // Фасад делегирует все методы ядра (см. PHPDoc @method): чаты, участники,
 // админы, закреп, команды, медиа, подписки.
-Max::sendBotAction($chatId, SenderAction::Typing);
+Max::sendChatAction($chatId, SenderAction::TypingOn);
 $admins = Max::getChatAdmins($chatId); // ChatAdminsResult::$members
 ```
 
 Список доступных методов — в PHPDoc фасада `GeekCo\LaravelMaxClient\Facades\Max` и в ядре
-`GeekCo\MaxPhpClient\ApiClient` (актуальные сигнатуры — v1.0.6).
+`GeekCo\MaxPhpClient\ApiClient` (актуальные сигнатуры — ядро v2.0.0).
 
 Полные рабочие примеры — в каталоге [`examples/`](examples/):
 `basic-usage.php` (фасад), `webhook-listener.php` (обработка апдейтов),
@@ -485,9 +485,10 @@ Laravel сортирует миграции приложения и всех п�
 `phone_verified_at`. Если записи пользователя ещё нет — она создаётся.
 
 Телефон принимается только из **подписанного** вложения: подпись проверяет `MaxContactService` (`ContactVerifier`
-ядра). Контакт без `hash` или с `hash: null` (поле nullable в спеке MAX) больше не роняет апдейт — с ядром v1.1.11 такой
-payload разбирается, но подпись не проходит, и номер считается неподтверждённым: он не сохраняется, а в лог уходит
-только предупреждение без значений. До v1.1.11 такой апдейт отклонялся целиком с ответом `400`.
+ядра). Контакт без `hash` или с `hash: null` (поле nullable в спеке MAX) не роняет апдейт: payload разбирается, но
+подпись не проходит, и номер считается неподтверждённым — он не сохраняется, а в лог уходит только предупреждение без
+значений. Номер извлекается только разбором `vcf_info`: в ядре v2.0.0 поле `vcf_phone` удалено из входящего DTO, потому
+что API его не присылает.
 
 Отдельной настройки не требуется: контакт приходит только через кнопку `request_contact` и формируется платформой из
 номера аккаунта отправителя. Регистрация в MAX возможна на один номер, поэтому это номер самого пользователя, а не
@@ -589,13 +590,18 @@ php artisan max:unsubscribe https://example.com/max/webhook
 
    ```php
    use GeekCo\LaravelMaxClient\Webhook\MaxUpdateReceived;
+   use GeekCo\MaxPhpClient\Dto\Update\MessageCreatedUpdate;
 
    class YourUpdateListener
    {
        public function handle(MaxUpdateReceived $event): void
        {
-           $update = $event->update; // GeekCo\MaxPhpClient\Dto\Update
-           // бизнес-обработка апдейта
+           // Update — abstract-база ядра v2.0.0: поля события живут в подтипе,
+           // ветвление — по классу (instanceof), а не по строке update_type.
+           if ($event->update instanceof MessageCreatedUpdate) {
+               $text = $event->update->message->body?->text;
+               // бизнес-обработка сообщения
+           }
        }
    }
    ```
@@ -691,6 +697,7 @@ source .env && docker run --rm --network host \
 
 | Версия | Дата       | Основное                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
 |--------|------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| v2.0.0 | 2026-11-17 | Синхронизация с ядром `^2.0` (BC): `Update` — типизированная база с 19 подтипами, ветвление по классу события; enum `UpdateType`/`AttachmentType`/`ButtonType` удалены; вложения, кнопки и разметка — отдельные DTO; `getUpdates()` возвращает `UpdateList`, `getUpdatesBatch()` удалён; ответы — `SimpleQueryResult`, `UploadEndpoint`; методы ядра переименованы (`sendChatAction`, `answerCallback`, `getCommentById`, `getVideoAttachmentDetails`); `vcf_phone` удалён из входящего контакта, номер — только из `vcf_info`; реестр чатов и телефон переведены на `Support\UpdateInfo`; PHPDoc фасада пересобран                                                                          |
 | v1.2.3 | 2026-10-20 | Синхронизация с ядром `^1.1.11`: апдейт с контактом без `hash` (поле nullable в спеке MAX) больше не теряется — до v1.1.11 ядро роняло разбор и вебхук отвечал `400 invalid_payload`, теперь апдейт доходит до слушателей, а телефон из неподписанного контакта по-прежнему не подтверждается (fail-closed без изменений); правок логики адаптера не потребовалось, добавлены регрессионные тесты; в PHPDoc фасада снята устаревшая пометка `deprecated` у `addChatMembers()`; потребителям ядра: новое значение `ChatStatus::Suspended` требует ветки `default` в исчерпывающем `match`                                                                                                     |
 | v1.2.2 | 2026-10-16 | `WebAppContactService` — подтверждение контакта из моста `window.WebApp.requestContact()` (верификатор ядра `WebAppContactVerifier`, ядро `^1.1.10`), `WebAppSession` — read-сторона WebApp-сессии с флагом подтверждённого контакта (`confirm()` регенерирует session id), ключ `webapp.session.contact_confirmed` (`MAX_WEBAPP_SESSION_CONTACT_CONFIRMED`); дефолтный список типов webhook-подписки расширен с 6 до 13 (`webhook.update_types`, env `MAX_WEBHOOK_UPDATE_TYPES`; фильтр доставки подписки, Long Polling не фильтрует) — после обновления выполнить `max:subscribe` заново                                                                                                   |
 | v1.2.0 | 2026-09-30 | `max_chats` хранит одну строку на чат с первичным ключом `chat_id`, связи с пользователями вынесены в `max_chat_users` (`MaxChatUser`, `MAX_CHAT_USERS_MODEL`) с суррогатным `id` типа `uuid`; удалён `MaxChat::maxUser()`; перенос данных с установки v1.1.x выполняет команда `max:upgrade` (`--dry-run`, `--force`, `--rollback`); колонки идентификаторов объявлены знаковым `BIGINT` — идентификаторы групп и каналов в MAX отрицательные; `title_checked_at` → `chat_checked_at` (значение переносит `max:upgrade`), `chats.title_check_interval` → `chats.chat_check_interval` (прежние имена читаются); метаданные чата запрашиваются один раз на чат независимо от числа участников |
