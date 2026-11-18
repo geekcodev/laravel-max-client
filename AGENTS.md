@@ -104,6 +104,11 @@ src/
   WebApp/WebAppContactService.php  подтверждение контакта из моста requestContact (ядро WebAppContactVerifier, v1.1.10)
   WebApp/WebAppSession.php         read-сторона WebApp-сессии: user_id/chat_id, флаг contact_confirmed (confirm/forget)
   Enums/MaxChatStatus.php        статусы реестра чатов (active/stopped/removed + label())
+  Enums/MaxUserPermission.php    права Policy пользователя (max_user.*)
+  Enums/MaxChatPermission.php    права Policy чата (max_chat.*)
+  Policies/PermissionPolicy.php  база: ability policy → permission-строка из конфига
+  Policies/MaxUserPolicy.php     политика max_user (viewAny/view/edit/delete/manage)
+  Policies/MaxChatPolicy.php     политика max_chat (viewAny/view/edit/delete/manage)
   Models/MaxChat.php               модель реестра чатов max_chats (одна строка на чат, переопределяемая
                                    через chats.model): maxUsers(), chatUsers(), displayName()
   Models/MaxChatUser.php           модель связей max_chat_users (chat_id + user_id, переопределяемая
@@ -382,6 +387,14 @@ scripts/check-coverage.php         порог покрытия строк (по 
   заполненном аватаре; при `users.profile_check_interval` > 0 — периодическая перепроверка по `profile_checked_at` в
   секундах (по умолчанию 86400 — раз в сутки); явный `chatId` работает без реестра). «Когда вызывать» — ответственность
   приложения.
+- **Права и Policy** (`Enums\MaxUserPermission`, `Enums\MaxChatPermission`, `Policies\*`): код ресурса — префикс
+  permission-строки (`max_user` / `max_chat`), ability — `view.any`, `view`, `edit`, `delete`, `manage`. `manage`
+  закрывает синхронизацию (`refresh`/`sync`), `create` в контракт не входит: реестр наполняется вебхуками, ручное
+  создание пакетом не поддерживается. Строки прав живут в `config('laravel-max-client.permissions.*')` (env
+  `MAX_PERMISSION_*`), ключ `view_any` — потому что точка в ключе массива ломает `config()`. Провайдер регистрирует
+  `Gate::policy()` для моделей `users.model` / `chats.model`, но только если хост ещё не назначил свою политику
+  (`Gate::getPolicyFor()`): интегратор должен иметь возможность заменить RBAC. Внутри Policy permission-строка
+  проверяется через Gate, поэтому совместимы spatie/laravel-permission и обычные `Gate::define`.
 - **Подписки** (`MaxSubscribeCommand`, `MaxUnsubscribeCommand`): `php artisan max:subscribe <url>` /
   `max:unsubscribe <url>`. URL — только HTTPS; при заданном `config('laravel-max-client.webhook.allowed_hosts')` хост
   сверяется до создания подписки (A10). Подписка — на полный набор потребляемых типов
@@ -575,6 +588,11 @@ source .env && docker run --rm --network host \
     миграция числится невыполненной при уже существующей таблице. Без guard падает «таблица уже есть», то есть ломается
     ровно у тех установок, ради которых переименование и делалось. На SQLite этот сценарий не воспроизводится — нужен
     source-level тест.
+22. Policy регистрируются в `MaxServiceProvider::boot()`, а не в `register()`: к этому моменту конфиг уже смёржен и
+    доступны модели из `users.model` / `chats.model`. Если хост назначил свою политику через `Gate::policy()` до
+    загрузки провайдера, пакет её не перетирает — перед регистрацией проверяется `Gate::getPolicyFor()`. Ключи прав в
+    конфиге — `view_any` (с подчёркиванием), а permission-строки — `max_user.view.any`; точка в ключе массива ломает
+    `config()`.
 
 - CI на ветке `new` до выпуска ядра v2.0.0 красный по построению: `composer install` в контейнере не находит
   `../max-php-client` (path-repository). Ветку не пушим и PR не открываем, пока ядро не выпущено; после выпуска
@@ -587,6 +605,8 @@ source .env && docker run --rm --network host \
 - [ ] Публичный API не сломан: сигнатуры в patch-релизе не менялись.
 - [ ] Секретов нет в коде, логах, коммитах; конфиг publishable с безопасными дефолтами.
 - [ ] Входные данные валидируются (вебхук, middleware, параметры запросов).
+- [ ] Права fail-closed: Policy зарегистрированы для моделей из конфига, permission-строки совпадают с enum-ами,
+  `create` в контракте отсутствует, хост может переопределить политику.
 - [ ] Вебхук-обработка асинхронная; 200 в окне 30с; fail-closed без секрета.
 - [ ] Документация (README, .env.example, AGENTS.md) синхронна с реальным поведением кода и версиями ядра.
 - [ ] Обновлены `.agents/journals/`, при необходимости — `.agents/plans/` и `.agents/release/`.

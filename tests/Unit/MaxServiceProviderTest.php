@@ -7,6 +7,10 @@ namespace GeekCo\LaravelMaxClient\Tests\Unit;
 use GeekCo\LaravelMaxClient\Http\HttpClientFactory;
 use GeekCo\LaravelMaxClient\Http\Middleware\LogMaxRequestsMiddleware;
 use GeekCo\LaravelMaxClient\MaxServiceProvider;
+use GeekCo\LaravelMaxClient\Models\MaxChat;
+use GeekCo\LaravelMaxClient\Models\MaxUser;
+use GeekCo\LaravelMaxClient\Policies\MaxChatPolicy;
+use GeekCo\LaravelMaxClient\Policies\MaxUserPolicy;
 use GeekCo\LaravelMaxClient\Support\Config;
 use GeekCo\LaravelMaxClient\Support\Logger;
 use GeekCo\LaravelMaxClient\Tests\Support\MockHttpClient;
@@ -28,6 +32,7 @@ use GeekCo\MaxPhpClient\Security\WebAppContactVerifier;
 use GeekCo\MaxPhpClient\Security\WebAppDataValidator;
 use GuzzleHttp\Psr7\Response;
 use Illuminate\Contracts\Events\Dispatcher;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\ServiceProvider;
 use Psr\Http\Client\ClientInterface;
@@ -235,5 +240,26 @@ final class MaxServiceProviderTest extends TestCase
         $handler(Update::fromArray($this->updatePayload()));
 
         Queue::assertPushed(HandleMaxUpdateJob::class, 1);
+    }
+
+    public function testPoliciesAreRegisteredForConfiguredModels(): void
+    {
+        self::assertInstanceOf(MaxUserPolicy::class, Gate::getPolicyFor(MaxUser::class));
+        self::assertInstanceOf(MaxChatPolicy::class, Gate::getPolicyFor(MaxChat::class));
+    }
+
+    public function testPermissionDefaultsAreMergedIntoConfig(): void
+    {
+        self::assertSame('max_user.view.any', config('laravel-max-client.permissions.max_user.view_any'));
+        self::assertSame('max_user.view', config('laravel-max-client.permissions.max_user.view'));
+        self::assertSame('max_user.edit', config('laravel-max-client.permissions.max_user.edit'));
+        self::assertSame('max_user.delete', config('laravel-max-client.permissions.max_user.delete'));
+        self::assertSame('max_user.manage', config('laravel-max-client.permissions.max_user.manage'));
+
+        self::assertSame('max_chat.view.any', config('laravel-max-client.permissions.max_chat.view_any'));
+        self::assertSame('max_chat.view', config('laravel-max-client.permissions.max_chat.view'));
+        self::assertSame('max_chat.edit', config('laravel-max-client.permissions.max_chat.edit'));
+        self::assertSame('max_chat.delete', config('laravel-max-client.permissions.max_chat.delete'));
+        self::assertSame('max_chat.manage', config('laravel-max-client.permissions.max_chat.manage'));
     }
 }

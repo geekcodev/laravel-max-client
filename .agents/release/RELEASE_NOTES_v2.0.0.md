@@ -20,6 +20,14 @@
 
 **Фасад** `Max` пересобран под `ApiClient` v2 (guard-тест сверяет набор методов и типы возврата).
 
+**Права и Policy.** Добавлены `Enums\MaxUserPermission` / `Enums\MaxChatPermission` (строки `max_user.*` /
+`max_chat.*`), Policy-классы `MaxUserPolicy` / `MaxChatPolicy` (общая база `PermissionPolicy`) и секция `permissions` в
+конфиге (env
+`MAX_PERMISSION_*`). Провайдер регистрирует `Gate::policy()` для моделей из `users.model` / `chats.model`; если хост уже
+назначил свою политику, она не перетирается. Ability: `view.any`, `view`, `edit`, `delete`, `manage`; `manage` —
+синхронизация (`refresh`/`sync`). Создание записей в контракт не входит: реестр наполняется вебхуками, ручное создание
+пакетом не поддерживается.
+
 ## Изменение (BC)
 
 - Минимальная версия ядра: `geekcodev/max-php-client` `^2.0` (`composer update geekcodev/max-php-client`).
@@ -51,5 +59,5 @@
 
 ## Качество
 
-Lint 0/70, PHPStan level max 0, PHPUnit 371/371 (940 assertions), покрытие 96.93% строк (1325/1367), `composer audit` 0.
+Lint 0/76, PHPStan level max 0, PHPUnit 379/379 (985 assertions), покрытие 96.87% строк (1360/1404), `composer audit` 0.
 Серверная проверка вебхуков в тестовом проекте — обязательное условие выпуска.

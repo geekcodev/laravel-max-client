@@ -2,6 +2,9 @@
 
 declare(strict_types=1);
 
+use GeekCo\LaravelMaxClient\Enums\MaxChatPermission;
+use GeekCo\LaravelMaxClient\Enums\MaxUserPermission;
+
 return [
 
     /*
@@ -226,6 +229,41 @@ return [
         'chat_check_interval' => (int) (\in_array(env('MAX_CHATS_CHAT_CHECK_INTERVAL'), [null, ''], true)
             ? env('MAX_CHATS_TITLE_CHECK_INTERVAL', 0)
             : env('MAX_CHATS_CHAT_CHECK_INTERVAL')),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Права на локальные записи (Policy)
+    |--------------------------------------------------------------------------
+    |
+    | Пакет регистрирует Gate::policy для моделей users.model и chats.model.
+    | Код ресурса (max_user / max_chat) — префикс permission-строки, ability —
+    | view.any / view / edit / delete / manage. Значения проверяются через
+    | Gate::forUser(...)->allows(), поэтому работают spatie/laravel-permission и
+    | обычные Gate::define. Управление записью (edit/delete) и синхронизация
+    | (manage) разделены. Создание в контракт не входит: реестр наполняется
+    | вебхуками, ручное создание пакетом не поддерживается.
+    |
+    | ability view.any хранится ключом view_any, потому что точка в ключе
+    | массива ломает доступ через config().
+    |
+    */
+
+    'permissions' => [
+        'max_user' => [
+            'view_any' => (string) env('MAX_PERMISSION_USER_VIEW_ANY', MaxUserPermission::ViewAny->value),
+            'view' => (string) env('MAX_PERMISSION_USER_VIEW', MaxUserPermission::View->value),
+            'edit' => (string) env('MAX_PERMISSION_USER_EDIT', MaxUserPermission::Edit->value),
+            'delete' => (string) env('MAX_PERMISSION_USER_DELETE', MaxUserPermission::Delete->value),
+            'manage' => (string) env('MAX_PERMISSION_USER_MANAGE', MaxUserPermission::Manage->value),
+        ],
+        'max_chat' => [
+            'view_any' => (string) env('MAX_PERMISSION_CHAT_VIEW_ANY', MaxChatPermission::ViewAny->value),
+            'view' => (string) env('MAX_PERMISSION_CHAT_VIEW', MaxChatPermission::View->value),
+            'edit' => (string) env('MAX_PERMISSION_CHAT_EDIT', MaxChatPermission::Edit->value),
+            'delete' => (string) env('MAX_PERMISSION_CHAT_DELETE', MaxChatPermission::Delete->value),
+            'manage' => (string) env('MAX_PERMISSION_CHAT_MANAGE', MaxChatPermission::Manage->value),
+        ],
     ],
 
     /*

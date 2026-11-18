@@ -15,6 +15,10 @@ use GeekCo\LaravelMaxClient\Http\Middleware\LogMaxRequestsMiddleware;
 use GeekCo\LaravelMaxClient\Http\Middleware\SetMaxFrameAncestors;
 use GeekCo\LaravelMaxClient\Listeners\PersistMaxChatListener;
 use GeekCo\LaravelMaxClient\Listeners\PersistMaxUserPhoneListener;
+use GeekCo\LaravelMaxClient\Models\MaxChat;
+use GeekCo\LaravelMaxClient\Models\MaxUser;
+use GeekCo\LaravelMaxClient\Policies\MaxChatPolicy;
+use GeekCo\LaravelMaxClient\Policies\MaxUserPolicy;
 use GeekCo\LaravelMaxClient\Services\MaxChatProfileService;
 use GeekCo\LaravelMaxClient\Services\MaxContactService;
 use GeekCo\LaravelMaxClient\Services\MaxUserProfileService;
@@ -37,7 +41,9 @@ use GeekCo\MaxPhpClient\Security\WebAppContactVerifier;
 use GeekCo\MaxPhpClient\Security\WebAppDataValidator;
 use Illuminate\Contracts\Container\Container;
 use Illuminate\Contracts\Events\Dispatcher;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Routing\Router;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\ServiceProvider;
 
 final class MaxServiceProvider extends ServiceProvider
@@ -174,6 +180,8 @@ final class MaxServiceProvider extends ServiceProvider
 
     public function boot(): void
     {
+        $this->registerPolicies();
+
         if ($this->app->runningInConsole()) {
             $this->commands([
                 MaxChatsRefreshCommand::class,
@@ -226,5 +234,27 @@ final class MaxServiceProvider extends ServiceProvider
             MaxUpdateReceived::class,
             PersistMaxUserPhoneListener::class,
         );
+    }
+
+    /**
+     * Регистрируем политики для моделей из конфига. Если хост уже назначил
+     * свою политику (в том числе через авто-обнаружение), не перетираем её:
+     * интегратор должен иметь возможность заменить RBAC-модель.
+     */
+    private function registerPolicies(): void
+    {
+        /** @var class-string<Model> $userModel */
+        $userModel = config()->string(self::CONFIG_KEY.'.users.model', MaxUser::class);
+
+        /** @var class-string<Model> $chatModel */
+        $chatModel = config()->string(self::CONFIG_KEY.'.chats.model', MaxChat::class);
+
+        if (Gate::getPolicyFor($userModel) === null) {
+            Gate::policy($userModel, MaxUserPolicy::class);
+        }
+
+        if (Gate::getPolicyFor($chatModel) === null) {
+            Gate::policy($chatModel, MaxChatPolicy::class);
+        }
     }
 }
