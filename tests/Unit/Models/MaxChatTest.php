@@ -67,7 +67,11 @@ final class MaxChatTest extends TestCase
 
         $chat->chatUsers()->delete();
 
+        app()->setLocale('en');
         $this->assertSame('chat 222', $chat->displayName());
+
+        app()->setLocale('ru');
+        $this->assertSame('чат 222', $chat->displayName());
     }
 
     public function testDisplayNameForDialogIgnoresOtherUsersInGroup(): void

@@ -16,10 +16,18 @@ final class MaxChatStatusTest extends TestCase
         $this->assertSame('removed', MaxChatStatus::Removed->value);
     }
 
-    public function testLabels(): void
+    public function testLabelsFollowLocale(): void
     {
+        app()->setLocale('ru');
+
         $this->assertSame('Активен', MaxChatStatus::Active->label());
         $this->assertSame('Остановлен', MaxChatStatus::Stopped->label());
         $this->assertSame('Удалён', MaxChatStatus::Removed->label());
+
+        app()->setLocale('en');
+
+        $this->assertSame('Active', MaxChatStatus::Active->label());
+        $this->assertSame('Stopped', MaxChatStatus::Stopped->label());
+        $this->assertSame('Removed', MaxChatStatus::Removed->label());
     }
 }

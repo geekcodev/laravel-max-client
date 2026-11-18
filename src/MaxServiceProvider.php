@@ -182,6 +182,8 @@ final class MaxServiceProvider extends ServiceProvider
     {
         $this->registerPolicies();
 
+        $this->loadTranslationsFrom(__DIR__.'/../lang', self::CONFIG_KEY);
+
         if ($this->app->runningInConsole()) {
             $this->commands([
                 MaxChatsRefreshCommand::class,
@@ -195,6 +197,10 @@ final class MaxServiceProvider extends ServiceProvider
             $this->publishes([
                 __DIR__.'/../config/laravel-max-client.php' => $this->app->configPath(self::CONFIG_KEY.'.php'),
             ], self::CONFIG_KEY.'-config');
+
+            $this->publishes([
+                __DIR__.'/../lang' => $this->app->langPath('vendor/'.self::CONFIG_KEY),
+            ], self::CONFIG_KEY.'-lang');
         }
 
         // Миграции подгружаются из пакета, публикация не требуется: копия в

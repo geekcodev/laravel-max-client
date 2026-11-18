@@ -635,6 +635,22 @@ php artisan max:listen
 > Активная webhook-подписка отключает Long Polling — не используйте оба механизма одновременно. Фильтр
 > `webhook.update_types` действует только на доставку подписки: `max:listen` присылает все типы апдейтов.
 
+## Локализация
+
+Пакет поставляет `lang/ru` и `lang/en` для подписей enum-ов и fallback-названия чата:
+
+```php
+MaxChatStatus::Active->label();      // Активен / Active
+$chat->displayName();                // при отсутствии данных: «чат 123» / «chat 123»
+```
+
+Строки берутся из namespace `laravel-max-client`, поэтому подписи следуют текущей локали приложения. Переопределить их
+можно публикацией:
+
+```bash
+php artisan vendor:publish --tag=laravel-max-client-lang
+```
+
 ## Права и Policy
 
 Пакет регистрирует `MaxUserPolicy` и `MaxChatPolicy` для моделей из `users.model` / `chats.model`. Код ресурса — префикс

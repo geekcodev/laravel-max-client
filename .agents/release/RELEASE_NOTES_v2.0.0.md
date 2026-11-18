@@ -28,6 +28,10 @@
 синхронизация (`refresh`/`sync`). Создание записей в контракт не входит: реестр наполняется вебхуками, ручное создание
 пакетом не поддерживается.
 
+**Локализация.** Добавлены `lang/ru` и `lang/en`: `MaxChatStatus::label()` больше не содержит жёстких русских строк, а
+fallback `MaxChat::displayName()` возвращает «чат :id» / «chat :id» по текущей локали. Провайдер подключает переводы
+namespace `laravel-max-client`; публикация — тег `laravel-max-client-lang`.
+
 ## Изменение (BC)
 
 - Минимальная версия ядра: `geekcodev/max-php-client` `^2.0` (`composer update geekcodev/max-php-client`).
@@ -59,5 +63,5 @@
 
 ## Качество
 
-Lint 0/76, PHPStan level max 0, PHPUnit 379/379 (985 assertions), покрытие 96.87% строк (1360/1404), `composer audit` 0.
+Lint 0/77, PHPStan level max 0, PHPUnit 381/381 (995 assertions), покрытие 96.87% строк (1362/1406), `composer audit` 0.
 Серверная проверка вебхуков в тестовом проекте — обязательное условие выпуска.

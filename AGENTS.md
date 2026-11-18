@@ -77,6 +77,8 @@
 
 ```
 config/laravel-max-client.php      publishable-конфиг (echo php artisan vendor:publish)
+lang/{ru,en}/enums.php             переводы enum-подписей (статусы чата)
+lang/{ru,en}/chat.php              fallback-название чата для displayName()
 database/migrations/               миграции max_users/max_chats/max_chat_users: подгружаются провайдером
                                    (loadMigrationsFrom), публикация не нужна. Полоса 0000_00 — начало
                                    общего порядка миграций приложения и всех пакетов (см. gotchas 19 и 20).
@@ -395,6 +397,9 @@ scripts/check-coverage.php         порог покрытия строк (по 
   `Gate::policy()` для моделей `users.model` / `chats.model`, но только если хост ещё не назначил свою политику
   (`Gate::getPolicyFor()`): интегратор должен иметь возможность заменить RBAC. Внутри Policy permission-строка
   проверяется через Gate, поэтому совместимы spatie/laravel-permission и обычные `Gate::define`.
+- **Локализация**: подписи enum-ов (`MaxChatStatus::label()`) и fallback-название чата (`MaxChat::displayName()`)
+  берутся из `laravel-max-client::*`; провайдер делает `loadTranslationsFrom`, публикация — тег
+  `laravel-max-client-lang`. Жёсткие строки в enum/модели не хранятся.
 - **Подписки** (`MaxSubscribeCommand`, `MaxUnsubscribeCommand`): `php artisan max:subscribe <url>` /
   `max:unsubscribe <url>`. URL — только HTTPS; при заданном `config('laravel-max-client.webhook.allowed_hosts')` хост
   сверяется до создания подписки (A10). Подписка — на полный набор потребляемых типов

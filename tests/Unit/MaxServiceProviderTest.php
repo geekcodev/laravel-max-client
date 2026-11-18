@@ -242,6 +242,17 @@ final class MaxServiceProviderTest extends TestCase
         Queue::assertPushed(HandleMaxUpdateJob::class, 1);
     }
 
+    public function testTranslationsAreLoaded(): void
+    {
+        app()->setLocale('en');
+        self::assertSame('Active', __('laravel-max-client::enums.chat_status.active'));
+        self::assertSame('chat 42', __('laravel-max-client::chat.fallback', ['id' => 42]));
+
+        app()->setLocale('ru');
+        self::assertSame('Активен', __('laravel-max-client::enums.chat_status.active'));
+        self::assertSame('чат 42', __('laravel-max-client::chat.fallback', ['id' => 42]));
+    }
+
     public function testPoliciesAreRegisteredForConfiguredModels(): void
     {
         self::assertInstanceOf(MaxUserPolicy::class, Gate::getPolicyFor(MaxUser::class));
