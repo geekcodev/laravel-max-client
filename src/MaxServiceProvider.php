@@ -15,6 +15,7 @@ use GeekCo\LaravelMaxClient\Http\Middleware\LogMaxRequestsMiddleware;
 use GeekCo\LaravelMaxClient\Http\Middleware\SetMaxFrameAncestors;
 use GeekCo\LaravelMaxClient\Listeners\PersistMaxChatListener;
 use GeekCo\LaravelMaxClient\Listeners\PersistMaxUserPhoneListener;
+use GeekCo\LaravelMaxClient\Listeners\PersistWebAppContactPhoneListener;
 use GeekCo\LaravelMaxClient\Models\MaxChat;
 use GeekCo\LaravelMaxClient\Models\MaxUser;
 use GeekCo\LaravelMaxClient\Policies\MaxChatPolicy;
@@ -26,6 +27,7 @@ use GeekCo\LaravelMaxClient\Support\Config;
 use GeekCo\LaravelMaxClient\Support\Logger;
 use GeekCo\LaravelMaxClient\WebApp\ResolveWebAppIdentity;
 use GeekCo\LaravelMaxClient\WebApp\WebAppContactService;
+use GeekCo\LaravelMaxClient\WebApp\WebAppContactVerified;
 use GeekCo\LaravelMaxClient\WebApp\WebAppContext;
 use GeekCo\LaravelMaxClient\WebApp\WebAppSession;
 use GeekCo\LaravelMaxClient\Webhook\HandleMaxUpdateJob;
@@ -239,6 +241,11 @@ final class MaxServiceProvider extends ServiceProvider
         $this->app->make(Dispatcher::class)->listen(
             MaxUpdateReceived::class,
             PersistMaxUserPhoneListener::class,
+        );
+
+        $this->app->make(Dispatcher::class)->listen(
+            WebAppContactVerified::class,
+            PersistWebAppContactPhoneListener::class,
         );
     }
 

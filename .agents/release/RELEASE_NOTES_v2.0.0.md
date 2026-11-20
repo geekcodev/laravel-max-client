@@ -18,6 +18,11 @@
 **Телефон из контакта** (`PersistMaxUserPhoneListener`, `MaxContactService`): контакт читается как `ContactAttachment`,
 номер — только из `vcf_info`; неподписанный контакт по-прежнему не подтверждается (fail-closed).
 
+**Телефон из моста `requestContact`.** `WebAppContactService::resolve()` после проверки подписи диспатчит
+`WebAppContactVerified`; `PersistWebAppContactPhoneListener` пишет `phone` и `phone_verified_at` в `max_users`, создаёт
+запись при отсутствии. Имя в ответе моста не приходит — необязательный параметр `resolve(..., ?string $name)`
+позволяет передать его из `initDataUnsafe.user` и заполнить `first_name`/`last_name`. `verify()` событие не диспатчит.
+
 **Фасад** `Max` пересобран под `ApiClient` v2 (guard-тест сверяет набор методов и типы возврата).
 
 **Права и Policy.** Добавлены `Enums\MaxUserPermission` / `Enums\MaxChatPermission` (строки `max_user.*` /
@@ -46,8 +51,8 @@ namespace `laravel-max-client`; публикация — тег `laravel-max-cli
   `VideoInfo` → `VideoAttachmentDetails`, `UploadResult` → `UploadEndpoint`; `AttachmentType`, `ButtonType` удалены.
 - **Контакт.** `ContactAttachmentPayload::$vcfPhone` удалён: номер берётся только из `vcf_info`.
 - **Callback.** `Callback::$message` удалён — сообщение нажатой кнопки в `MessageCallbackUpdate::$message`.
-- Публичный API самого пакета не менялся: конфиг, миграции, команды, middleware и событие `MaxUpdateReceived` остались
-  прежними; меняются только типы ядра, которые пакет прокидывает потребителю.
+- Ломающих изменений публичного API пакета нет: существующие ключи конфига, миграции, команды, middleware и событие
+  `MaxUpdateReceived` остались прежними; добавлены секция `permissions`, Policy-классы, enum-ы прав и переводы.
 
 ## Затронутые сценарии
 
@@ -63,5 +68,5 @@ namespace `laravel-max-client`; публикация — тег `laravel-max-cli
 
 ## Качество
 
-Lint 0/77, PHPStan level max 0, PHPUnit 381/381 (995 assertions), покрытие 96.87% строк (1362/1406), `composer audit` 0.
-Серверная проверка вебхуков в тестовом проекте — обязательное условие выпуска.
+Lint 0/80, PHPStan level max 0, PHPUnit 393/393 (1019 assertions), покрытие 96.97% строк (1407/1451), `composer audit`
+0. Серверная проверка вебхуков в тестовом проекте — обязательное условие выпуска.

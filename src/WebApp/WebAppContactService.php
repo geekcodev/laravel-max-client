@@ -40,7 +40,28 @@ final class WebAppContactService
      * Подтверждённый контакт или null: подпись не сошлась, authDate просрочен
      * либо поля пустые.
      */
-    public function resolve(string $authDate, string $phone, string $userId, string $hash): ?WebAppContact
+    public function resolve(string $authDate, string $phone, string $userId, string $hash, ?string $name = null): ?WebAppContact
+    {
+        $contact = $this->confirm($authDate, $phone, $userId, $hash);
+
+        if ($contact === null) {
+            return null;
+        }
+
+        event(new WebAppContactVerified($contact, $name));
+
+        return $contact;
+    }
+
+    /**
+     * Только проверка подписи, без возврата контакта и без события.
+     */
+    public function verify(string $authDate, string $phone, string $userId, string $hash): bool
+    {
+        return $this->confirm($authDate, $phone, $userId, $hash) !== null;
+    }
+
+    private function confirm(string $authDate, string $phone, string $userId, string $hash): ?WebAppContact
     {
         $contact = $this->verifier->resolve($authDate, $phone, $userId, $hash);
 
@@ -53,13 +74,5 @@ final class WebAppContactService
         }
 
         return $contact;
-    }
-
-    /**
-     * Только проверка подписи, без возврата контакта.
-     */
-    public function verify(string $authDate, string $phone, string $userId, string $hash): bool
-    {
-        return $this->resolve($authDate, $phone, $userId, $hash) !== null;
     }
 }

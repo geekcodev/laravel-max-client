@@ -163,6 +163,11 @@ return [
     | middleware кладёт user_id/chat_id; contact_confirmed — ключ флага
     | подтверждённого контакта (значение — user_id, WebAppSession::confirm()).
     |
+    | Подтверждённый контакт из моста window.WebApp.requestContact() пакет
+    | сохраняет в max_users.phone с phone_verified_at через
+    | PersistWebAppContactPhoneListener. Отдельной настройки нет: контакт уже
+    | проверен подписью WebAppContactVerifier.
+    |
     */
 
     'webapp' => [

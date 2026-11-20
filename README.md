@@ -225,12 +225,16 @@ class ContactController
 {
     public function __invoke(Request $request, WebAppContactService $contacts, WebAppSession $webAppSession)
     {
-        // $request->input(...) — поля, переданные фронтендом из ответа requestContact()
+        // $request->input(...) — поля, переданные фронтендом из ответа requestContact();
+        // имя в ответе requestContact() не приходит — его берут из initDataUnsafe.user
+        $name = trim((string) $request->string('name'));
+
         $contact = $contacts->resolve(
             $request->string('auth_date'),
             $request->string('phone'),
             $request->string('user_id'),
             $request->string('hash'),
+            $name,
         );
 
         if ($contact === null) {
@@ -243,7 +247,11 @@ class ContactController
 }
 ```
 
-`verify(...)` — та же проверка без возврата контакта. Номер и `hash` в логи не попадают (A09); нормализация номера
+`resolve()` после успешной проверки диспатчит `WebAppContactVerified`; пакетный слушатель
+`PersistWebAppContactPhoneListener` пишет `phone` в `max_users` и обновляет `phone_verified_at`. Если записи
+пользователя ещё нет, она создаётся; необязательное имя из `initDataUnsafe.user` разбивается на `first_name` и
+`last_name`. Отдельной настройки не требуется: контакт уже проверен подписью. `verify(...)` — та же проверка без
+возврата контакта и без события/записи в реестр. Номер и `hash` в логи не попадают (A09); нормализация номера
 (удаление `+` и разделителей) — на стороне ядра. Оба класса доступны из контейнера.
 
 ### Middleware `max.csp` (встраивание в MAX)
@@ -495,6 +503,11 @@ Laravel сортирует миграции приложения и всех п�
 номера аккаунта отправителя. Регистрация в MAX возможна на один номер, поэтому это номер самого пользователя, а не
 произвольное значение из пересланной карточки — пересланный контакт приходит файлом, а не вложением типа `contact`, и в
 этот путь не попадает.
+
+Телефон из моста `window.WebApp.requestContact()` сохраняется тем же реестром через
+`PersistWebAppContactPhoneListener`: после проверки `WebAppContactService` он пишет `max_users.phone` и
+`phone_verified_at`, а при отсутствии пользователя создаёт запись. Имя из ответа моста не приходит — приложение может
+передать его из `initDataUnsafe.user` в `WebAppContactService::resolve()`.
 
 Проверка подписи и разбор vCard делаются ядром (`ContactVerifier`, `ContactPhoneExtractor`) — телефон и
 `vcf_info` не логируются. Если пришёл номер, отличный от сохранённого, значит пользователь сменил номер аккаунта: новое

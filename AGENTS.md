@@ -104,6 +104,7 @@ src/
   WebApp/WebAppContext.php         верификация WebAppData мини-приложения (resolve/verify из Request и из строки)
   WebApp/ResolveWebAppIdentity.php middleware max.webapp: сессия user_id/chat_id + strict (403)
   WebApp/WebAppContactService.php  подтверждение контакта из моста requestContact (ядро WebAppContactVerifier, v1.1.10)
+  WebApp/WebAppContactVerified.php событие подтверждённого контакта (contact + необязательное имя)
   WebApp/WebAppSession.php         read-сторона WebApp-сессии: user_id/chat_id, флаг contact_confirmed (confirm/forget)
   Enums/MaxChatStatus.php        статусы реестра чатов (active/stopped/removed + label())
   Enums/MaxUserPermission.php    права Policy пользователя (max_user.*)
@@ -119,6 +120,7 @@ src/
                                    upsert связей max_chat_users, title из chat_title_changed,
                                    дозаполнение метаданных, last_activity_at
   Listeners/PersistMaxUserPhoneListener.php телефон из подтверждённого контакта (request_contact), выключен по умолчанию
+  Listeners/PersistWebAppContactPhoneListener.php телефон из подтверждённого контакта моста requestContact
   Services/MaxChatProfileService.php метаданные чата через getChat (общий кэш ответа), чаты реестра
   Services/MaxContactService.php   верификация контакта и извлечение телефона (ядро: ContactVerifier/ContactPhoneExtractor)
   Services/MaxUserProfileService.php  заполнение max_users (аватар/профиль) через getChatMembers
@@ -268,10 +270,16 @@ scripts/check-coverage.php         порог покрытия строк (по 
   мини-приложением через `window.WebApp.requestContact()` (мост requestContact — **другой** механизм, чем кнопка
   `request_contact` в чате: там `vcf_info`, здесь три поля `authDate`/`phone`/`userId`). Тонкая обёртка над ядровым
   `WebAppContactVerifier` (v1.1.10; singleton в контейнере, token из `api_token`, maxAge из
-  `webapp.max_age`). Конструктор `(Config, Logger)`; методы `resolve(authDate, phone, userId, hash):
-  ?WebAppContact` — подтверждённый контакт (номер в цифрах) или `null`, и `verify(...): bool`. При отказе логируется
-  только факт и `user_id` (`warning`), телефон/`hash`/payload не логируются (A09). Подпись считается по нормализованным
-  (цифровым) значениям полей — нормализацию делает ядро.
+  `webapp.max_age`). Конструктор `(Config, Logger)`; методы `resolve(authDate, phone, userId, hash, name = null):
+  ?WebAppContact` — подтверждённый контакт (номер в цифрах) или `null`; после успеха диспатчит
+  `WebAppContactVerified`, который сохраняет телефон в `max_users` через `PersistWebAppContactPhoneListener`;
+  `verify(...): bool` — только проверка, без события и записи. При отказе логируется только факт и `user_id`
+  (`warning`), телефон/`hash`/payload не логируются (A09). Подпись считается по нормализованным (цифровым) значениям
+  полей — нормализацию делает ядро.
+- **`Listeners\PersistWebAppContactPhoneListener`**: обработчик `WebAppContactVerified`; пишет
+  `max_users.phone`/`phone_verified_at`, создаёт запись при отсутствии, имя из `initDataUnsafe.user` (необязательный
+  параметр `resolve`) разбивает на `first_name`/`last_name`. Существующее имя не перетирается; смена номера логируется
+  без значений (A09). Отдельного флага включения нет: контакт уже проверен подписью.
 - **`WebApp\WebAppSession`** (`src/WebApp/WebAppSession.php`, v1.2.2): `final readonly`-хелпер — read-сторона тех же
   ключей сессии, которые пишет `ResolveWebAppIdentity`. Методы: `userId(Request): ?int`, `chatId(Request): ?int`
   (ключи `webapp.session.*`), `contactConfirmed(Request, int): bool` — сверяет сохранённый `user_id` с переданным,

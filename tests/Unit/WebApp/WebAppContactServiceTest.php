@@ -7,10 +7,12 @@ namespace GeekCo\LaravelMaxClient\Tests\Unit\WebApp;
 use GeekCo\LaravelMaxClient\MaxServiceProvider;
 use GeekCo\LaravelMaxClient\Tests\TestCase;
 use GeekCo\LaravelMaxClient\WebApp\WebAppContactService;
+use GeekCo\LaravelMaxClient\WebApp\WebAppContactVerified;
 use GeekCo\LaravelMaxClient\Support\Config;
 use GeekCo\LaravelMaxClient\Support\Logger;
 use GeekCo\MaxPhpClient\Dto\WebAppContact;
 use Illuminate\Log\Events\MessageLogged;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Log;
 
 final class WebAppContactServiceTest extends TestCase
@@ -33,8 +35,58 @@ final class WebAppContactServiceTest extends TestCase
         return hash_hmac('sha256', $payload, self::TOKEN);
     }
 
+    public function testResolveDispatchesVerifiedEventWithName(): void
+    {
+        Event::fake();
+
+        $authDate = (string) time();
+
+        $contact = $this->service()->resolve(
+            $authDate,
+            self::PHONE,
+            self::USER_ID,
+            $this->hash($authDate),
+            'Иван Петров',
+        );
+
+        $this->assertInstanceOf(WebAppContact::class, $contact);
+
+        Event::assertDispatched(
+            WebAppContactVerified::class,
+            static fn (WebAppContactVerified $event): bool => $event->contact->userId === 67890
+                && $event->contact->phone === self::PHONE
+                && $event->name === 'Иван Петров',
+        );
+    }
+
+    public function testVerifyDoesNotDispatchVerifiedEvent(): void
+    {
+        Event::fake();
+
+        $authDate = (string) time();
+
+        $this->assertTrue(
+            $this->service()->verify($authDate, self::PHONE, self::USER_ID, $this->hash($authDate)),
+        );
+
+        Event::assertNotDispatched(WebAppContactVerified::class);
+    }
+
+    public function testFailedResolveDoesNotDispatchVerifiedEvent(): void
+    {
+        Event::fake();
+
+        $this->assertNull(
+            $this->service()->resolve((string) time(), self::PHONE, self::USER_ID, str_repeat('a', 64)),
+        );
+
+        Event::assertNotDispatched(WebAppContactVerified::class);
+    }
+
     public function testResolveReturnsConfirmedContact(): void
     {
+        Event::fake();
+
         $authDate = (string) time();
 
         $contact = $this->service()->resolve($authDate, self::PHONE, self::USER_ID, $this->hash($authDate));
@@ -105,6 +157,8 @@ final class WebAppContactServiceTest extends TestCase
      */
     public function testFormattedPhoneIsNormalizedBeforeSignatureCheck(): void
     {
+        Event::fake();
+
         $authDate = (string) time();
 
         $contact = $this->service()->resolve($authDate, '+7 925 000-00-00', self::USER_ID, $this->hash($authDate));
