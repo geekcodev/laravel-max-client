@@ -16,6 +16,9 @@ declare(strict_types=1);
 //
 // Тот же слушатель обрабатывает апдейты из Long Polling локальной разработки
 // (php artisan max:listen), когда публичного домена для вебхука нет.
+//
+// С ядра v2.0.0 Update — типизированная иерархия: ветвление идёт по классу
+// события, а не по строке update_type.
 
 namespace App\Listeners;
 
@@ -23,7 +26,10 @@ use GeekCo\LaravelMaxClient\Facades\Max;
 use GeekCo\LaravelMaxClient\Webhook\MaxUpdateReceived;
 use GeekCo\MaxPhpClient\Dto\NewMessageBody;
 use GeekCo\MaxPhpClient\Dto\Recipient;
-use GeekCo\MaxPhpClient\Enum\UpdateType;
+use GeekCo\MaxPhpClient\Dto\Update\BotAddedToChatUpdate;
+use GeekCo\MaxPhpClient\Dto\Update\BotStartedUpdate;
+use GeekCo\MaxPhpClient\Dto\Update\MessageCallbackUpdate;
+use GeekCo\MaxPhpClient\Dto\Update\MessageCreatedUpdate;
 
 final class MaxWebhookListener
 {
@@ -31,33 +37,34 @@ final class MaxWebhookListener
     {
         $update = $event->update;
 
-        switch ($update->updateType) {
-            case UpdateType::BotAdded:
-            case UpdateType::BotStarted:
+        switch (true) {
+            case $update instanceof BotAddedToChatUpdate:
+            case $update instanceof BotStartedUpdate:
                 // Реестр чатов max_chats ведёт пакет (PersistMaxChatListener,
-                // MAX_CHATS_ENABLED=true) — GET /chats deprecated, chat_id
+                // MAX_CHATS_ENABLED=true) — GET /chats удалён в v2.0.0, chat_id
                 // хранится через подписку на эти апдейты. Здесь — только
                 // бизнес-обработка события.
 
                 break;
 
-            case UpdateType::MessageCreated:
+            case $update instanceof MessageCreatedUpdate:
                 $this->handleMessageCreated($update);
 
                 break;
 
-            case UpdateType::MessageCallback:
+            case $update instanceof MessageCallbackUpdate:
                 $this->handleCallback($update);
 
                 break;
         }
     }
 
-    private function handleMessageCreated(GeekCo\MaxPhpClient\Dto\Update $update): void
+    private function handleMessageCreated(MessageCreatedUpdate $update): void
     {
         $message = $update->message;
+        $body = $message->body;
 
-        if ($message === null || $message->body === null) {
+        if ($body === null) {
             return;
         }
 
@@ -66,7 +73,7 @@ final class MaxWebhookListener
             return;
         }
 
-        $text = $message->body->text;
+        $text = $body->text;
 
         if ($text === null) {
             return;
@@ -74,7 +81,7 @@ final class MaxWebhookListener
 
         // Ответ в тот же диалог: для лички хватает chatId, иначе userId.
         $recipient = new Recipient(
-            chatId: $update->chatId,
+            chatId: $message->recipient->chatId,
             userId: $message->sender->userId,
         );
 
@@ -84,15 +91,11 @@ final class MaxWebhookListener
         );
     }
 
-    private function handleCallback(GeekCo\MaxPhpClient\Dto\Update $update): void
+    private function handleCallback(MessageCallbackUpdate $update): void
     {
         $callback = $update->callback;
 
-        if ($callback === null) {
-            return;
-        }
-
-        // payload задаётся при отправке сообщения с кнопками (NewMessageLink).
+        // payload задаётся при отправке сообщения с кнопками.
         $payload = $callback->payload;
 
         if ($payload === null) {
@@ -100,11 +103,9 @@ final class MaxWebhookListener
         }
 
         // Макс. 2 ответа/сек на диалог — ядро применяет rate limit само.
-        if ($update->chatId !== null) {
-            Max::sendMessage(
-                new Recipient(chatId: $update->chatId),
-                new NewMessageBody(text: 'Получен callback: ' . $payload),
-            );
-        }
+        Max::answerCallback(
+            callbackId: $callback->callbackId,
+            notification: 'Получен callback: ' . $payload,
+        );
     }
 }

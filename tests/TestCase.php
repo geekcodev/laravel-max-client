@@ -126,19 +126,37 @@ abstract class TestCase extends Orchestra
      */
     protected function updatePayload(array $overrides = []): array
     {
-        return array_replace([
+        $data = [
             'update_type' => 'message_created',
             'timestamp' => 1700000000000,
-            'chat_id' => 42,
-            'user' => [
-                'user_id' => 1,
-                'first_name' => 'Test',
-                'last_name' => 'User',
-                'username' => 'testuser',
-                'is_bot' => false,
-                'last_activity_time' => 1700000000000,
+            'message' => [
+                'sender' => $this->userPayload(),
+                'recipient' => ['chat_id' => 42, 'chat_type' => 'dialog'],
+                'timestamp' => 1700000000000,
+                'body' => ['mid' => 'mid-1', 'seq' => 0, 'text' => 'Hello'],
             ],
-            'is_channel' => false,
-        ], $overrides);
+        ];
+
+        if (array_key_exists('chat_id', $overrides)) {
+            $data['message']['recipient']['chat_id'] = $overrides['chat_id'];
+            unset($overrides['chat_id']);
+        }
+
+        return array_replace_recursive($data, $overrides);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    protected function userPayload(): array
+    {
+        return [
+            'user_id' => 1,
+            'first_name' => 'Test',
+            'last_name' => 'User',
+            'username' => 'testuser',
+            'is_bot' => false,
+            'last_activity_time' => 1700000000000,
+        ];
     }
 }

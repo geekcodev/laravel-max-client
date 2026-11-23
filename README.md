@@ -11,8 +11,8 @@
 
 - PHP ^8.4
 - Laravel ^12.0|^13.0
-- `geekcodev/max-php-client` ^1.1.11 (Comments API, `getUpdatesBatch`, `UploadedInfo`, `WebAppContactVerifier`,
-  устойчивый разбор вложений v1.1.11)
+- `geekcodev/max-php-client` ^2.0 (типизированные `Update`/вложения/кнопки/разметка, `UpdateList`,
+  `SimpleQueryResult`, `UploadEndpoint`)
 
 ## Установка
 
@@ -64,6 +64,7 @@ MAX_API_TOKEN=your-bot-access-token
 | `MAX_USERS_PROFILE_FROM_ACTIVE_CHATS`      | `true`                                       | `MaxUserProfileService`: резолвить chat_id из активных `max_chats`                                                                                              |
 | `MAX_USERS_PROFILE_BATCH_SIZE`             | `50`                                         | Лимит userIds на один вызов `getChatMembers` (батчинг)                                                                                                          |
 | `MAX_USERS_PROFILE_CHECK_INTERVAL`         | `86400`                                      | Периодичность перепроверки профиля в `ensureAvatar`, сек (0 — только при пустом аватаре)                                                                        |
+| `MAX_PERMISSION_*`                         | `max_user.*` / `max_chat.*`                  | Permission-строки Policy (`MAX_PERMISSION_USER_VIEW_ANY`, `MAX_PERMISSION_CHAT_EDIT`, …), см. «Права и Policy»                                                  |
 | `MAX_LOGGING_ENABLED`                      | `false`                                      | Включает логирование (middleware `max.log`)                                                                                                                     |
 | `MAX_LOGGING_CHANNEL`                      | `stack`                                      | Канал Laravel для логов                                                                                                                                         |
 | `MAX_LOGGING_FALLBACK_CHANNEL`             | `laravel-max-client`                         | Запасной канал, если основной не определён                                                                                                                      |
@@ -91,12 +92,12 @@ Max::sendMessage(
 
 // Фасад делегирует все методы ядра (см. PHPDoc @method): чаты, участники,
 // админы, закреп, команды, медиа, подписки.
-Max::sendBotAction($chatId, SenderAction::Typing);
+Max::sendChatAction($chatId, SenderAction::TypingOn);
 $admins = Max::getChatAdmins($chatId); // ChatAdminsResult::$members
 ```
 
 Список доступных методов — в PHPDoc фасада `GeekCo\LaravelMaxClient\Facades\Max` и в ядре
-`GeekCo\MaxPhpClient\ApiClient` (актуальные сигнатуры — v1.0.6).
+`GeekCo\MaxPhpClient\ApiClient` (актуальные сигнатуры — ядро v2.0.0).
 
 Полные рабочие примеры — в каталоге [`examples/`](examples/):
 `basic-usage.php` (фасад), `webhook-listener.php` (обработка апдейтов),
@@ -224,12 +225,16 @@ class ContactController
 {
     public function __invoke(Request $request, WebAppContactService $contacts, WebAppSession $webAppSession)
     {
-        // $request->input(...) — поля, переданные фронтендом из ответа requestContact()
+        // $request->input(...) — поля, переданные фронтендом из ответа requestContact();
+        // имя в ответе requestContact() не приходит — его берут из initDataUnsafe.user
+        $name = trim((string) $request->string('name'));
+
         $contact = $contacts->resolve(
             $request->string('auth_date'),
             $request->string('phone'),
             $request->string('user_id'),
             $request->string('hash'),
+            $name,
         );
 
         if ($contact === null) {
@@ -242,8 +247,12 @@ class ContactController
 }
 ```
 
-`verify(...)` — та же проверка без возврата контакта. Номер и `hash` в логи не попадают (A09); нормализация номера
-(удаление `+` и разделителей) — на стороне ядра. Оба класса доступны из контейнера.
+`resolve()` после успешной проверки диспатчит `WebAppContactVerified`; пакетный слушатель
+`PersistWebAppContactPhoneListener` пишет `phone` в `max_users` и обновляет `phone_verified_at`. Если записи
+пользователя ещё нет, она создаётся; необязательное имя из `initDataUnsafe.user` разбивается на `first_name` и
+`last_name`. Отдельной настройки не требуется: контакт уже проверен подписью. `verify(...)` — та же проверка без
+возврата контакта и без события/записи в реестр. Номер и `hash` в логи не попадают (A09); нормализация номера (удаление
+`+` и разделителей) — на стороне ядра. Оба класса доступны из контейнера.
 
 ### Middleware `max.csp` (встраивание в MAX)
 
@@ -485,14 +494,20 @@ Laravel сортирует миграции приложения и всех п�
 `phone_verified_at`. Если записи пользователя ещё нет — она создаётся.
 
 Телефон принимается только из **подписанного** вложения: подпись проверяет `MaxContactService` (`ContactVerifier`
-ядра). Контакт без `hash` или с `hash: null` (поле nullable в спеке MAX) больше не роняет апдейт — с ядром v1.1.11 такой
-payload разбирается, но подпись не проходит, и номер считается неподтверждённым: он не сохраняется, а в лог уходит
-только предупреждение без значений. До v1.1.11 такой апдейт отклонялся целиком с ответом `400`.
+ядра). Контакт без `hash` или с `hash: null` (поле nullable в спеке MAX) не роняет апдейт: payload разбирается, но
+подпись не проходит, и номер считается неподтверждённым — он не сохраняется, а в лог уходит только предупреждение без
+значений. Номер извлекается только разбором `vcf_info`: в ядре v2.0.0 поле `vcf_phone` удалено из входящего DTO, потому
+что API его не присылает.
 
 Отдельной настройки не требуется: контакт приходит только через кнопку `request_contact` и формируется платформой из
 номера аккаунта отправителя. Регистрация в MAX возможна на один номер, поэтому это номер самого пользователя, а не
 произвольное значение из пересланной карточки — пересланный контакт приходит файлом, а не вложением типа `contact`, и в
 этот путь не попадает.
+
+Телефон из моста `window.WebApp.requestContact()` сохраняется тем же реестром через
+`PersistWebAppContactPhoneListener`: после проверки `WebAppContactService` он пишет `max_users.phone` и
+`phone_verified_at`, а при отсутствии пользователя создаёт запись. Имя из ответа моста не приходит — приложение может
+передать его из `initDataUnsafe.user` в `WebAppContactService::resolve()`.
 
 Проверка подписи и разбор vCard делаются ядром (`ContactVerifier`, `ContactPhoneExtractor`) — телефон и
 `vcf_info` не логируются. Если пришёл номер, отличный от сохранённого, значит пользователь сменил номер аккаунта: новое
@@ -589,13 +604,18 @@ php artisan max:unsubscribe https://example.com/max/webhook
 
    ```php
    use GeekCo\LaravelMaxClient\Webhook\MaxUpdateReceived;
+   use GeekCo\MaxPhpClient\Dto\Update\MessageCreatedUpdate;
 
    class YourUpdateListener
    {
        public function handle(MaxUpdateReceived $event): void
        {
-           $update = $event->update; // GeekCo\MaxPhpClient\Dto\Update
-           // бизнес-обработка апдейта
+           // Update — abstract-база ядра v2.0.0: поля события живут в подтипе,
+           // ветвление — по классу (instanceof), а не по строке update_type.
+           if ($event->update instanceof MessageCreatedUpdate) {
+               $text = $event->update->message->body?->text;
+               // бизнес-обработка сообщения
+           }
        }
    }
    ```
@@ -627,6 +647,62 @@ php artisan max:listen
 
 > Активная webhook-подписка отключает Long Polling — не используйте оба механизма одновременно. Фильтр
 > `webhook.update_types` действует только на доставку подписки: `max:listen` присылает все типы апдейтов.
+
+## Локализация
+
+Пакет поставляет `lang/ru` и `lang/en` для подписей enum-ов и fallback-названия чата:
+
+```php
+MaxChatStatus::Active->label();      // Активен / Active
+$chat->displayName();                // при отсутствии данных: «чат 123» / «chat 123»
+```
+
+Строки берутся из namespace `laravel-max-client`, поэтому подписи следуют текущей локали приложения. Переопределить их
+можно публикацией:
+
+```bash
+php artisan vendor:publish --tag=laravel-max-client-lang
+```
+
+## Права и Policy
+
+Пакет регистрирует `MaxUserPolicy` и `MaxChatPolicy` для моделей из `users.model` / `chats.model`. Код ресурса — префикс
+permission-строки (`max_user` / `max_chat`), ability — `view.any`, `view`, `edit`, `delete`, `manage`.
+`manage` закрывает операции синхронизации (`MaxUserProfileService`, `MaxChatProfileService`). Создания в контракте нет:
+реестр наполняется вебхуками, ручное создание пакетом не поддерживается.
+
+| Право                                     | Назначение                             |
+|-------------------------------------------|----------------------------------------|
+| `max_user.view.any` / `max_chat.view.any` | Доступ к списку записей                |
+| `max_user.view` / `max_chat.view`         | Просмотр записи                        |
+| `max_user.edit` / `max_chat.edit`         | Редактирование локальной записи        |
+| `max_user.delete` / `max_chat.delete`     | Удаление локальной записи              |
+| `max_user.manage` / `max_chat.manage`     | Синхронизация с MAX (`refresh`/`sync`) |
+
+```php
+use GeekCo\LaravelMaxClient\Enums\MaxChatPermission;
+use GeekCo\LaravelMaxClient\Enums\MaxUserPermission;
+use GeekCo\LaravelMaxClient\Models\MaxChat;
+use GeekCo\LaravelMaxClient\Models\MaxUser;
+
+$user->can('viewAny', MaxUser::class);
+$user->can('edit', $chat);
+$user->can(MaxUserPermission::Manage->value);
+
+// Сидирование прав в spatie/laravel-permission: единый источник значений.
+foreach ([...MaxUserPermission::cases(), ...MaxChatPermission::cases()] as $permission) {
+    Permission::findOrCreate($permission->value);
+}
+```
+
+Строки прав настраиваются в `config/laravel-max-client.php` (`permissions.max_user.*` / `permissions.max_chat.*`) и env
+`MAX_PERMISSION_USER_*` / `MAX_PERMISSION_CHAT_*`. Ability `view.any` хранится ключом `view_any`, потому что точка в
+ключе массива ломает `config()`. Внутри Policy строка проверяется через Gate, поэтому работают и
+spatie/laravel-permission, и обычные `Gate::define`.
+
+Если хост назначает собственную политику до загрузки провайдера пакета (через `Gate::policy()`), пакет её не перетирает:
+`Gate::getPolicyFor()` проверяется перед регистрацией. Политика по умолчанию fail-closed — без выданного права `can()`
+возвращает `false`.
 
 ## Логирование (middleware `max.log`)
 
@@ -689,21 +765,22 @@ source .env && docker run --rm --network host \
 `.agents/release/RELEASE_NOTES_*.md`
 репозитория. Версия берётся из git-тегов, в `composer.json` поле `version` не указывается.
 
-| Версия | Дата       | Основное                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
-|--------|------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| v1.2.3 | 2026-10-20 | Синхронизация с ядром `^1.1.11`: апдейт с контактом без `hash` (поле nullable в спеке MAX) больше не теряется — до v1.1.11 ядро роняло разбор и вебхук отвечал `400 invalid_payload`, теперь апдейт доходит до слушателей, а телефон из неподписанного контакта по-прежнему не подтверждается (fail-closed без изменений); правок логики адаптера не потребовалось, добавлены регрессионные тесты; в PHPDoc фасада снята устаревшая пометка `deprecated` у `addChatMembers()`; потребителям ядра: новое значение `ChatStatus::Suspended` требует ветки `default` в исчерпывающем `match`                                                                                                     |
-| v1.2.2 | 2026-10-16 | `WebAppContactService` — подтверждение контакта из моста `window.WebApp.requestContact()` (верификатор ядра `WebAppContactVerifier`, ядро `^1.1.10`), `WebAppSession` — read-сторона WebApp-сессии с флагом подтверждённого контакта (`confirm()` регенерирует session id), ключ `webapp.session.contact_confirmed` (`MAX_WEBAPP_SESSION_CONTACT_CONFIRMED`); дефолтный список типов webhook-подписки расширен с 6 до 13 (`webhook.update_types`, env `MAX_WEBHOOK_UPDATE_TYPES`; фильтр доставки подписки, Long Polling не фильтрует) — после обновления выполнить `max:subscribe` заново                                                                                                   |
-| v1.2.0 | 2026-09-30 | `max_chats` хранит одну строку на чат с первичным ключом `chat_id`, связи с пользователями вынесены в `max_chat_users` (`MaxChatUser`, `MAX_CHAT_USERS_MODEL`) с суррогатным `id` типа `uuid`; удалён `MaxChat::maxUser()`; перенос данных с установки v1.1.x выполняет команда `max:upgrade` (`--dry-run`, `--force`, `--rollback`); колонки идентификаторов объявлены знаковым `BIGINT` — идентификаторы групп и каналов в MAX отрицательные; `title_checked_at` → `chat_checked_at` (значение переносит `max:upgrade`), `chats.title_check_interval` → `chats.chat_check_interval` (прежние имена читаются); метаданные чата запрашиваются один раз на чат независимо от числа участников |
-| v1.1.4 | 2026-09-30 | Метаданные чатов (`title`, `description`, `link`, `icon_url`) одним запросом `getChat` на чат, телефон из подтверждённого `request_contact`, `max:chats:refresh` и `max:upgrade`, аддитивные миграции вместо правки create-миграций; исправлены потеря `bot_removed` и незаполненные метаданные у поздних участников чата                                                                                                                                                                                                                                                                                                                                                                    |
-| v1.1.2 | 2026-09-17 | Профили в диалогах через `dialog_with_user` (`getChatMembers` для диалогов недоступен), резолв типа чата, кэш чатов, ядро `^1.1.0`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
-| v1.1.1 | 2026-09-04 | Поле `chat_type` в `max_chats` (dialog/chat/channel) и его дозаполнение из lifecycle- и message/callback-апдейтов                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
-| v1.1.0 | 2026-08-28 | `MaxUserProfileService` (аватар и профиль через `getChatMembers`), реестр чатов переименован в `MaxChat` / `max_chats`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
-| v1.0.9 | 2026-08-19 | Реестр пользователей `max_users`, поле `last_activity_at`, переименование `bot_chats` → `max_bot_chats`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
-| v1.0.7 | 2026-08-15 | Ядро `^1.0.6`: глобальный rate limit 30 req/s (`global_rate_limit`), алиас middleware `max_bot.log` → `max.log`, доработка `max.csp`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
-| v1.0.6 | 2026-08-14 | Верификация WebAppData из строки (фрагмент URL `#WebAppData`) через `WebAppContext`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
-| v1.0.5 | 2026-08-13 | Настраиваемое логирование запросов и апдейтов (middleware `max.log`), синхронизация с ядром v1.0.3                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
-| v1.0.3 | 2026-08-12 | Поддержка мини-приложений, middleware `max.webapp`, реестр чатов, команды `max:subscribe` / `max:unsubscribe`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
-| v1.0.0 | 2026-08-08 | Первая версия адаптера: провайдер, publishable-конфиг, фасад, вебхук `POST /max/webhook` с очередью, Long Polling (`max:listen`)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| Версия | Дата       | Основное                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+|--------|------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| v2.0.0 | 2026-11-23 | Синхронизация с ядром `^2.0` (BC): `Update` — типизированная база с 19 подтипами, ветвление по классу события; enum `UpdateType`/`AttachmentType`/`ButtonType` удалены; вложения, кнопки и разметка — отдельные DTO; `getUpdates()` возвращает `UpdateList`, `getUpdatesBatch()` удалён; ответы — `SimpleQueryResult`, `UploadEndpoint`; методы ядра переименованы (`sendChatAction`, `answerCallback`, `getCommentById`, `getVideoAttachmentDetails`); `vcf_phone` удалён из входящего контакта, номер — только из `vcf_info`; реестр чатов и телефон переведены на `Support\UpdateInfo`; PHPDoc фасада пересобран; добавлены Policy-классы `MaxUserPolicy`/`MaxChatPolicy`, enum-ы прав и конфиг `permissions.*` (env `MAX_PERMISSION_*`), создание записей в контракт не входит; локализация `lang/{ru,en}` (подписи статусов чата и fallback имени); телефон из моста `requestContact` сохраняется в `max_users` (`WebAppContactVerified`) |
+| v1.2.3 | 2026-10-20 | Синхронизация с ядром `^1.1.11`: апдейт с контактом без `hash` (поле nullable в спеке MAX) больше не теряется — до v1.1.11 ядро роняло разбор и вебхук отвечал `400 invalid_payload`, теперь апдейт доходит до слушателей, а телефон из неподписанного контакта по-прежнему не подтверждается (fail-closed без изменений); правок логики адаптера не потребовалось, добавлены регрессионные тесты; в PHPDoc фасада снята устаревшая пометка `deprecated` у `addChatMembers()`; потребителям ядра: новое значение `ChatStatus::Suspended` требует ветки `default` в исчерпывающем `match`                                                                                                                                                                                                                                                                                                                                                       |
+| v1.2.2 | 2026-10-16 | `WebAppContactService` — подтверждение контакта из моста `window.WebApp.requestContact()` (верификатор ядра `WebAppContactVerifier`, ядро `^1.1.10`), `WebAppSession` — read-сторона WebApp-сессии с флагом подтверждённого контакта (`confirm()` регенерирует session id), ключ `webapp.session.contact_confirmed` (`MAX_WEBAPP_SESSION_CONTACT_CONFIRMED`); дефолтный список типов webhook-подписки расширен с 6 до 13 (`webhook.update_types`, env `MAX_WEBHOOK_UPDATE_TYPES`; фильтр доставки подписки, Long Polling не фильтрует) — после обновления выполнить `max:subscribe` заново                                                                                                                                                                                                                                                                                                                                                     |
+| v1.2.0 | 2026-09-30 | `max_chats` хранит одну строку на чат с первичным ключом `chat_id`, связи с пользователями вынесены в `max_chat_users` (`MaxChatUser`, `MAX_CHAT_USERS_MODEL`) с суррогатным `id` типа `uuid`; удалён `MaxChat::maxUser()`; перенос данных с установки v1.1.x выполняет команда `max:upgrade` (`--dry-run`, `--force`, `--rollback`); колонки идентификаторов объявлены знаковым `BIGINT` — идентификаторы групп и каналов в MAX отрицательные; `title_checked_at` → `chat_checked_at` (значение переносит `max:upgrade`), `chats.title_check_interval` → `chats.chat_check_interval` (прежние имена читаются); метаданные чата запрашиваются один раз на чат независимо от числа участников                                                                                                                                                                                                                                                   |
+| v1.1.4 | 2026-09-30 | Метаданные чатов (`title`, `description`, `link`, `icon_url`) одним запросом `getChat` на чат, телефон из подтверждённого `request_contact`, `max:chats:refresh` и `max:upgrade`, аддитивные миграции вместо правки create-миграций; исправлены потеря `bot_removed` и незаполненные метаданные у поздних участников чата                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| v1.1.2 | 2026-09-17 | Профили в диалогах через `dialog_with_user` (`getChatMembers` для диалогов недоступен), резолв типа чата, кэш чатов, ядро `^1.1.0`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| v1.1.1 | 2026-09-04 | Поле `chat_type` в `max_chats` (dialog/chat/channel) и его дозаполнение из lifecycle- и message/callback-апдейтов                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| v1.1.0 | 2026-08-28 | `MaxUserProfileService` (аватар и профиль через `getChatMembers`), реестр чатов переименован в `MaxChat` / `max_chats`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| v1.0.9 | 2026-08-19 | Реестр пользователей `max_users`, поле `last_activity_at`, переименование `bot_chats` → `max_bot_chats`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| v1.0.7 | 2026-08-15 | Ядро `^1.0.6`: глобальный rate limit 30 req/s (`global_rate_limit`), алиас middleware `max_bot.log` → `max.log`, доработка `max.csp`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| v1.0.6 | 2026-08-14 | Верификация WebAppData из строки (фрагмент URL `#WebAppData`) через `WebAppContext`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| v1.0.5 | 2026-08-13 | Настраиваемое логирование запросов и апдейтов (middleware `max.log`), синхронизация с ядром v1.0.3                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| v1.0.3 | 2026-08-12 | Поддержка мини-приложений, middleware `max.webapp`, реестр чатов, команды `max:subscribe` / `max:unsubscribe`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| v1.0.0 | 2026-08-08 | Первая версия адаптера: провайдер, publishable-конфиг, фасад, вебхук `POST /max/webhook` с очередью, Long Polling (`max:listen`)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
 
 Промежуточные патч-версии (v1.0.1, v1.0.2, v1.0.4, v1.0.8, v1.1.3) — см. GitHub Releases.
 

@@ -13,17 +13,16 @@
 - **Что это.** Laravel-пакет **`geekcodev/laravel-max-client`** — тонкий фреймворк-адаптер поверх framework-agnostic
   ядра **`geekcodev/max-php-client`** (клиент для **MAX Messenger Bot API**,
   https://max.ru). Репозиторий/рабочая папка — `laravel-max-client`.
-- **Статус.** Последний выпущенный релиз адаптера — **v1.1.3** (тег `v1.1.3`, GitHub Release, Packagist
-  `geekcodev/laravel-max-client`). Актуальную версию всегда уточняй по `git tag --sort=-v:refname | head -1` и
-  `git log --oneline -10`, а не по этому файлу. Незакоммиченная работа лежит в `dev`.
-- **Ядро.** `geekcodev/max-php-client` (namespace `GeekCo\MaxPhpClient`) — последний тег на момент последней
-  синхронизации **v1.1.11**, constraint в `composer.json` — `^1.1.11`. Ядро даёт PSR-7/17/18 транспорт, ретраи, rate
-  limit, загрузку медиа, webhook-хендлер, верификацию контакта, данных мини-приложения и контакта из моста
-  `requestContact` (`WebAppContactVerifier`, с v1.1.10). **Фактические версии проверяй динамически**:
-  `composer show geekcodev/max-php-client` и `git -C ../max-php-client tag --sort=-v:refname |
-  head -1` — не по этому файлу. Исправления ядра (CRLF/base64/`vcf_info` в верификации контакта, строковый
-  `message.link.sender`, комментарии и разметка) адаптер наследует автоматически вместе с обновлением зависимости.
-  Источник истины по API — `docs/api-reference.md` ядра и https://github.com/geekcodev/max-openapi (OpenAPI 3.1).
+- **Статус.** Последний выпущенный релиз адаптера — **v2.0.0** (тег `v2.0.0` на merge-коммите `new → main`, GitHub
+  Release и Packagist `geekcodev/laravel-max-client` — сразу после установки тега). В версии: переход на типизированную
+  модель ядра v2.0.0 (см. `.agents/release/RELEASE_NOTES_v2.0.0.md`). Актуальную версию всегда уточняй по
+  `git tag --sort=-v:refname | head -1` и `git log --oneline -10`, а не по этому файлу.
+- **Ядро.** `geekcodev/max-php-client` (namespace `GeekCo\MaxPhpClient`) — **v2.0.0** (типизированные `Update`,
+  вложения, кнопки, разметка), constraint `^2.0`; path-repositories не используются. **Фактические версии проверяй
+  динамически**: `composer show geekcodev/max-php-client` и
+  `git -C ../max-php-client tag --sort=-v:refname | head -1`. Исправления ядра адаптер наследует автоматически вместе с
+  обновлением зависимости. Источник истины по API — `docs/api-reference.md` ядра и
+  https://github.com/geekcodev/max-openapi (OpenAPI 3.1).
 - **Принцип.** Пакет — **тонкий адаптер**: всю бизнес-логику API (DTO, эндпоинты, ретраи, rate limit, безопасность)
   отдаёт ядру. Здесь живёт только Laravel-клей: ServiceProvider, конфиг, фасад, вебхук-роутинг, очередь. **Не форкать и
   не переписывать ядро**, не дублировать его методы.
@@ -34,6 +33,8 @@
 
 - `main` — стабильная, соответствует релизам.
 - `dev` — рабочая ветка; изменения сначала здесь.
+- `new` — ветка синхронизации с ядром v2.0.0 (typed `Update`, constraint `^2.0`); после приёмки на dev-стенде и релиза
+  вливается в `dev`.
 - Релизный процесс: PR `dev → main` → тег `vX.Y.Z` → GitHub Release → Packagist (webhook-автообновление).
 - `version` в `composer.json` **не указывается** — версия берётся из git-тегов.
 - `.env` — untracked (в `.gitignore`): `MAX_API_TOKEN`, `MAX_WEBHOOK_SECRET`. **Никогда не коммитить и не логировать
@@ -75,6 +76,8 @@
 
 ```
 config/laravel-max-client.php      publishable-конфиг (echo php artisan vendor:publish)
+lang/{ru,en}/enums.php             переводы enum-подписей (статусы чата)
+lang/{ru,en}/chat.php              fallback-название чата для displayName()
 database/migrations/               миграции max_users/max_chats/max_chat_users: подгружаются провайдером
                                    (loadMigrationsFrom), публикация не нужна. Полоса 0000_00 — начало
                                    общего порядка миграций приложения и всех пакетов (см. gotchas 19 и 20).
@@ -100,8 +103,14 @@ src/
   WebApp/WebAppContext.php         верификация WebAppData мини-приложения (resolve/verify из Request и из строки)
   WebApp/ResolveWebAppIdentity.php middleware max.webapp: сессия user_id/chat_id + strict (403)
   WebApp/WebAppContactService.php  подтверждение контакта из моста requestContact (ядро WebAppContactVerifier, v1.1.10)
+  WebApp/WebAppContactVerified.php событие подтверждённого контакта (contact + необязательное имя)
   WebApp/WebAppSession.php         read-сторона WebApp-сессии: user_id/chat_id, флаг contact_confirmed (confirm/forget)
   Enums/MaxChatStatus.php        статусы реестра чатов (active/stopped/removed + label())
+  Enums/MaxUserPermission.php    права Policy пользователя (max_user.*)
+  Enums/MaxChatPermission.php    права Policy чата (max_chat.*)
+  Policies/PermissionPolicy.php  база: ability policy → permission-строка из конфига
+  Policies/MaxUserPolicy.php     политика max_user (viewAny/view/edit/delete/manage)
+  Policies/MaxChatPolicy.php     политика max_chat (viewAny/view/edit/delete/manage)
   Models/MaxChat.php               модель реестра чатов max_chats (одна строка на чат, переопределяемая
                                    через chats.model): maxUsers(), chatUsers(), displayName()
   Models/MaxChatUser.php           модель связей max_chat_users (chat_id + user_id, переопределяемая
@@ -110,6 +119,7 @@ src/
                                    upsert связей max_chat_users, title из chat_title_changed,
                                    дозаполнение метаданных, last_activity_at
   Listeners/PersistMaxUserPhoneListener.php телефон из подтверждённого контакта (request_contact), выключен по умолчанию
+  Listeners/PersistWebAppContactPhoneListener.php телефон из подтверждённого контакта моста requestContact
   Services/MaxChatProfileService.php метаданные чата через getChat (общий кэш ответа), чаты реестра
   Services/MaxContactService.php   верификация контакта и извлечение телефона (ядро: ContactVerifier/ContactPhoneExtractor)
   Services/MaxUserProfileService.php  заполнение max_users (аватар/профиль) через getChatMembers
@@ -119,6 +129,7 @@ src/
   Facades/Max.php                  фасад поверх ApiClient (из контейнера)
   Contracts/MaxClient.php          интерфейс-фасад-прокси (необязательный, решает KISS при реализации)
   Support/Config.php               stateless readonly-доступ к config('max.*') (live-read из репозитория)
+  Support/UpdateInfo.php           контекст типизированного апдейта v2: chat_id, user, user_id, chat_type, is_channel
   Support/Logger.php               резолвер канала логирования (channel→fallback→stack, no-op при выключенном)
   Webhook/
     MaxWebhookController.php       граница HTTP: verify → decode → dispatch (200 за <30с)
@@ -258,10 +269,16 @@ scripts/check-coverage.php         порог покрытия строк (по 
   мини-приложением через `window.WebApp.requestContact()` (мост requestContact — **другой** механизм, чем кнопка
   `request_contact` в чате: там `vcf_info`, здесь три поля `authDate`/`phone`/`userId`). Тонкая обёртка над ядровым
   `WebAppContactVerifier` (v1.1.10; singleton в контейнере, token из `api_token`, maxAge из
-  `webapp.max_age`). Конструктор `(Config, Logger)`; методы `resolve(authDate, phone, userId, hash):
-  ?WebAppContact` — подтверждённый контакт (номер в цифрах) или `null`, и `verify(...): bool`. При отказе логируется
-  только факт и `user_id` (`warning`), телефон/`hash`/payload не логируются (A09). Подпись считается по нормализованным
-  (цифровым) значениям полей — нормализацию делает ядро.
+  `webapp.max_age`). Конструктор `(Config, Logger)`; методы `resolve(authDate, phone, userId, hash, name = null):
+  ?WebAppContact` — подтверждённый контакт (номер в цифрах) или `null`; после успеха диспатчит
+  `WebAppContactVerified`, который сохраняет телефон в `max_users` через `PersistWebAppContactPhoneListener`;
+  `verify(...): bool` — только проверка, без события и записи. При отказе логируется только факт и `user_id`
+  (`warning`), телефон/`hash`/payload не логируются (A09). Подпись считается по нормализованным (цифровым) значениям
+  полей — нормализацию делает ядро.
+- **`Listeners\PersistWebAppContactPhoneListener`**: обработчик `WebAppContactVerified`; пишет
+  `max_users.phone`/`phone_verified_at`, создаёт запись при отсутствии, имя из `initDataUnsafe.user` (необязательный
+  параметр `resolve`) разбивает на `first_name`/`last_name`. Существующее имя не перетирается; смена номера логируется
+  без значений (A09). Отдельного флага включения нет: контакт уже проверен подписью.
 - **`WebApp\WebAppSession`** (`src/WebApp/WebAppSession.php`, v1.2.2): `final readonly`-хелпер — read-сторона тех же
   ключей сессии, которые пишет `ResolveWebAppIdentity`. Методы: `userId(Request): ?int`, `chatId(Request): ?int`
   (ключи `webapp.session.*`), `contactConfirmed(Request, int): bool` — сверяет сохранённый `user_id` с переданным,
@@ -379,11 +396,22 @@ scripts/check-coverage.php         порог покрытия строк (по 
   заполненном аватаре; при `users.profile_check_interval` > 0 — периодическая перепроверка по `profile_checked_at` в
   секундах (по умолчанию 86400 — раз в сутки); явный `chatId` работает без реестра). «Когда вызывать» — ответственность
   приложения.
+- **Права и Policy** (`Enums\MaxUserPermission`, `Enums\MaxChatPermission`, `Policies\*`): код ресурса — префикс
+  permission-строки (`max_user` / `max_chat`), ability — `view.any`, `view`, `edit`, `delete`, `manage`. `manage`
+  закрывает синхронизацию (`refresh`/`sync`), `create` в контракт не входит: реестр наполняется вебхуками, ручное
+  создание пакетом не поддерживается. Строки прав живут в `config('laravel-max-client.permissions.*')` (env
+  `MAX_PERMISSION_*`), ключ `view_any` — потому что точка в ключе массива ломает `config()`. Провайдер регистрирует
+  `Gate::policy()` для моделей `users.model` / `chats.model`, но только если хост ещё не назначил свою политику
+  (`Gate::getPolicyFor()`): интегратор должен иметь возможность заменить RBAC. Внутри Policy permission-строка
+  проверяется через Gate, поэтому совместимы spatie/laravel-permission и обычные `Gate::define`.
+- **Локализация**: подписи enum-ов (`MaxChatStatus::label()`) и fallback-название чата (`MaxChat::displayName()`)
+  берутся из `laravel-max-client::*`; провайдер делает `loadTranslationsFrom`, публикация — тег
+  `laravel-max-client-lang`. Жёсткие строки в enum/модели не хранятся.
 - **Подписки** (`MaxSubscribeCommand`, `MaxUnsubscribeCommand`): `php artisan max:subscribe <url>` /
   `max:unsubscribe <url>`. URL — только HTTPS; при заданном `config('laravel-max-client.webhook.allowed_hosts')` хост
   сверяется до создания подписки (A10). Подписка — на полный набор потребляемых типов
-  (`Config::DEFAULT_WEBHOOK_UPDATE_TYPES`, 13 значений `UpdateType::*`; переопределяется ключом `webhook.update_types`,
-  env `MAX_WEBHOOK_UPDATE_TYPES` — строка через запятую или массив в конфиге, пустое значение — дефолт, полностью пустой
+  (`Config::DEFAULT_WEBHOOK_UPDATE_TYPES`, 13 строковых значений; переопределяется ключом `webhook.update_types`, env
+  `MAX_WEBHOOK_UPDATE_TYPES` — строка через запятую или массив в конфиге, пустое значение — дефолт, полностью пустой
   список деградирует в дефолт). `update_types` — фильтр **доставки подписки**: Long Polling (`max:listen`)
   типы не фильтрует. POST на существующий URL обновляет подписку (проверено эмпирически 2026-10-16), поэтому обновление
   существующей подписки после обновления пакета — один `max:subscribe`; состояние проверяется `max:subscriptions`.
@@ -411,16 +439,9 @@ scripts/check-coverage.php         порог покрытия строк (по 
 - Тесты обязательны для нового кода: unit на компоненты пакета; HTTP-слой — через `tests/Support/MockHttpClient`
   (PSR-18) или подмену `ClientInterface` в контейнере Testbench. Интеграционные — read-only, группа `integration`, без
   токена `markTestSkipped` (не падать).
-- `composer.json` constraints на момент разработки: `php ^8.4`, `geekcodev/max-php-client ^1.1.11` (терпимый `hash`
-  в контакте и метаданные вложений v1.1.11, комментарии и
-  разметка в ответах, 19 типов обновлений, DTO `Chat` с `dialog_with_user` — с v1.1.0 ядра; `WebAppDataValidator`
-  появился в v1.0.1; `Update::$user` nullable и фолбэки `user`/`chat_id` — с v1.0.3; `ApiClient::create()` с
-  `global_rate_limiter`, deprecated-права админов и пустое тело `sendAnswer` — с v1.0.6; Comments API (`getComments`/
-  `sendComment`/`editComment`/`deleteComment`/`getComment`), `getUpdatesBatch`, `UploadResult` →
-  `UploadedInfo`, `sendAnswer` с `notification`/`disableLinkPreview`, `Update::$comment` и события комментариев — с
-  v1.1.6 — версия ниже не резолвит актуальные сигнатуры; `ContactPhoneExtractor::fromVcf()` — с v1.1.7;
-  `Security\WebAppContactVerifier` и `Dto\WebAppContact` (контакт из моста `requestContact`) — с v1.1.10; терпимый
-  `hash` в `ContactAttachmentPayload`, `Attachment::$filename` и метаданные вложений — с v1.1.11),
+- `composer.json` constraints на момент разработки: `php ^8.4`, `geekcodev/max-php-client ^2.0` (типизированные
+  `Update` и 19 подтипов событий, `Attachment`/`AttachmentRequest`/`Button`/`MarkupElement`, `UpdateList`,
+  `SimpleQueryResult`, `UploadEndpoint`, `ChatMembersList`, `ModifyMembersResult`),
   `laravel/framework ^12.0|^13.0`, `guzzlehttp/guzzle ^7.15`
   (обязателен как PSR-18 по умолчанию), `illuminate/support`/`illuminate/queue`/`illuminate/routing` — через
   `laravel/framework`; dev — Testbench под поддерживаемую версию Laravel, phpunit ^11.5, phpstan ^2.0,
@@ -456,10 +477,9 @@ scripts/check-coverage.php         порог покрытия строк (по 
 
 - Аутентификация: `Authorization: <access_token>` без `Bearer`; query-передача токена не поддерживается.
 - Сервер: `https://platform-api2.max.ru` (домен **`platform-api2`**).
-- Контакт без подписи: `hash` в `ContactAttachmentPayload` объявлен в спеке nullable, и апдейт с контактом без `hash`
-  (или с `hash: null`) не отклоняется на разборе — ядро с v1.1.11 даёт пустой `hash`,
-  `ContactVerifier::verify()` возвращает `false`, и номер из такого контакта не считается подтверждённым.
-  До v1.1.11 такой апдейт ронял разбор и контроллер отвечал `400 invalid_payload` — апдейт терялся целиком.
+- Контакт без подписи: `ContactAttachmentPayload::$hash` — `?string`; апдейт с контактом без `hash` (или с
+  `hash: null`) разбирается, `ContactVerifier::verify()` возвращает `false`, и номер из такого контакта не считается
+  подтверждённым. Номер берётся только из `vcf_info`: в ядре v2.0.0 поле `vcf_phone` удалено из входящего DTO.
 - Нужна цепочка сертификатов Минцифры (в локальных средах — кастомный CA).
 - Вебхуки — только HTTPS :443, доверенный CA, полная цепочка; секрет 5–256 символов `[a-zA-Z0-9_-]`; ответ обязателен
   200 за 30 сек, иначе повторы 60с→150с→375с→… (10 попыток ~8ч), затем автоотписка.
@@ -467,20 +487,21 @@ scripts/check-coverage.php         порог покрытия строк (по 
 - Rate limits: отправка/редактирование/удаление сообщений и ответы на callback — **макс. 2/сек** на диалог/чат/канал
   (ядро: `RateLimiter`, token bucket); плюс **глобальный предохранитель 30 req/s** на весь API (применяется к каждому
   запросу, включая ретраи и загрузку медиа; при исчерпании ядро ждёт пополнения, а не бросает исключение).
-- `sendAnswer()` без `message` шлёт тело `{}` (requestBody обязателен) — ответ на callback без обновления сообщения;
-  deprecated-права админов (`post_edit_delete_message`/`edit_message`/`delete_message`) API возвращает, но выдавать
-  нельзя (`addChatAdmin` кидает `InvalidArgumentException`).
+- `answerCallback()` без `message` шлёт тело `{}` (requestBody обязателен) — ответ на callback без обновления сообщения;
+  `callback_id` не может быть пустым (fail-fast в ядре). Deprecated-права админов (`post_edit_delete_message`/
+  `edit_message`/`delete_message`) API возвращает, но выдавать нельзя (`addChatAdmin` кидает
+  `InvalidArgumentException`).
 - Загрузка медиа: `POST /uploads` с `type` в query; после загрузки **ждать** готовности вложения —
   `attachment.not.ready` ретраится автоматически. Домены загрузки: `https://fu.oneme.ru`,
   `https://iu.oneme.ru`, `https://vu.okcdn.ru`.
-- `GET /chats` **deprecated** — хранить `chat_id` через подписку на `bot_added`/`bot_started`.
+- `GET /chats` **удалён в v2.0.0** — хранить `chat_id` через подписку на `bot_added`/`bot_started`.
 - `addChatMembers` **deprecated** — добавление участников недоступно ботам.
-- Комментарии к постам в каналах (ядро с v1.1.6): `getComments`/`getComment`/`sendComment`/`editComment`/
-  `deleteComment`, апдейты `comment_created`/`comment_edited`/`comment_removed` приходят в `Update::$comment`
-  (DTO `CommentMessage`: `recipient` c `chat_id`/`chat_type`/`post_id`, `body` с `markup`). Права бота:
-  `read_all_messages`; токен — админ канала с этими правами.
-- `getUpdatesBatch` — батчевое получение апдейтов (`UpdatesResult`), полный набор 19 `UpdateType` включает
-  `bot_admin_permissions_changed` и события комментариев.
+- Комментарии к постам в каналах: `getComments`/`getCommentById`/`sendComment`/`editComment`/`deleteComment`; события
+  `comment_created`/`comment_edited` приходят как `CommentCreatedUpdate`/`CommentEditedUpdate` с `CommentMessage`
+  (`recipient` c `chat_id`/`chat_type`/`post_id`, `body` с `markup`). Права бота: `read_all_messages`; токен — админ
+  канала с этими правами.
+- `getUpdates()` возвращает `UpdateList` (`updates`, `marker?`); `getUpdatesBatch()` удалён. Типизированная иерархия —
+  19 подтипов `Update`, ветвление по классу (instanceof), а не по строке `update_type`.
 - `type=photo` deprecated → `type=image`.
 - Timestamp — Unix в **миллисекундах**, включая `join_time` (ядро: `Dto/ChatMember::$joinTime`).
 - Пагинация: `marker` (int64, nullable) + `count`. `message_id`/`callback_id` — строки; `chat_id`/`user_id` — int64.
@@ -549,7 +570,7 @@ source .env && docker run --rm --network host \
 4. `join_time` — **миллисекунды** (все timestamp API — Unix в миллисекундах).
 5. Из Docker-сети TLS до API блокируется — только `--network host`.
 6. Имя переменной — только `MAX_API_TOKEN` (старое `MAX_ACCESS_TOKEN` не используется).
-7. `getChats` deprecated — хранить `chat_id` через `bot_added`/`bot_started`.
+7. `getChats` удалён в v2.0.0 — хранить `chat_id` через `bot_added`/`bot_started`.
 8. Вебхук-роут обязан вернуть 200 ≤30с — обрабатывать апдейты только через очередь; никогда не блокировать контроллер
    бизнес-логикой.
 9. Секреты/токены/`vcf_info`/callback payload — никогда в логи и коммиты.
@@ -563,18 +584,28 @@ source .env && docker run --rm --network host \
     ядра, иначе легко сослаться на устаревший constraint.
 17. После содержательной сессии — файл в `.agents/journals/sessions/` и строка таблицы в `JOURNAL.md` (раздел 4.1):
     каталог в git, поэтому эти записи — часть репозитория, а не мусор в рабочем дереве.
-18. Идентификаторы в MAX бывают **отрицательными** (`chat_id` у групп и каналов) — колонки должны быть знаковыми.
+18. `Update` в ядре v2.0.0 — abstract-база: плоских `chatId`/`user`/`message`/`comment`/`callback` больше нет, поля
+    живут в подтипах. В адаптере контекст берётся через `Support\UpdateInfo`, ветвление — `instanceof`, не по строке
+    `update_type` (enum `UpdateType` удалён).
+19. Идентификаторы в MAX бывают **отрицательными** (`chat_id` у групп и каналов) — колонки должны быть знаковыми.
     `unsignedBigInteger` отверг бы такой идентификатор на MySQL, а на SQLite это не воспроизводится: знаковость там
     игнорируется, поэтому объявление приходится проверять по исходникам миграций.
-19. Порядок миграций общий для приложения и всех пакетов: Laravel сортирует их по имени файла и идёт сверху вниз,
+20. Порядок миграций общий для приложения и всех пакетов: Laravel сортирует их по имени файла и идёт сверху вниз,
     поэтому внешний ключ допустим только на таблицу, чья миграция имеет меньшее имя. Пакет занимает свою **полосу** —
     здесь `0000_00`, то есть начало порядка, так как `users.max_user_id` ссылается на `max_users.user_id` и без ранней
     полосы FK упирается в ещё не созданную таблицу. Раскладка полос и почему приложение занимает две полосы — в
     `0000_00_000001_create_max_users_table.php` и в MigrationOrderTest приложения.
-20. Переименование уже выполненной миграции не молчаит, а требует `Schema::hasTable()` в `up()`: после смены имени
+21. Переименование уже выполненной миграции не молчаит, а требует `Schema::hasTable()` в `up()`: после смены имени
     миграция числится невыполненной при уже существующей таблице. Без guard падает «таблица уже есть», то есть ломается
     ровно у тех установок, ради которых переименование и делалось. На SQLite этот сценарий не воспроизводится — нужен
     source-level тест.
+22. Policy регистрируются в `MaxServiceProvider::boot()`, а не в `register()`: к этому моменту конфиг уже смёржен и
+    доступны модели из `users.model` / `chats.model`. Если хост назначил свою политику через `Gate::policy()` до
+    загрузки провайдера, пакет её не перетирает — перед регистрацией проверяется `Gate::getPolicyFor()`. Ключи прав в
+    конфиге — `view_any` (с подчёркиванием), а permission-строки — `max_user.view.any`; точка в ключе массива ломает
+    `config()`.
+
+- Ядро v2.0.0 выпущено, зависимости адаптера — `^2.0`; CI на `new` собирается из Packagist без path-repositories.
 
 ## 10. Чек-лист «production-grade» (самооценка при доработках)
 
@@ -583,6 +614,8 @@ source .env && docker run --rm --network host \
 - [ ] Публичный API не сломан: сигнатуры в patch-релизе не менялись.
 - [ ] Секретов нет в коде, логах, коммитах; конфиг publishable с безопасными дефолтами.
 - [ ] Входные данные валидируются (вебхук, middleware, параметры запросов).
+- [ ] Права fail-closed: Policy зарегистрированы для моделей из конфига, permission-строки совпадают с enum-ами,
+  `create` в контракте отсутствует, хост может переопределить политику.
 - [ ] Вебхук-обработка асинхронная; 200 в окне 30с; fail-closed без секрета.
 - [ ] Документация (README, .env.example, AGENTS.md) синхронна с реальным поведением кода и версиями ядра.
 - [ ] Обновлены `.agents/journals/`, при необходимости — `.agents/plans/` и `.agents/release/`.

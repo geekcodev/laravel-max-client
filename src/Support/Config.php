@@ -7,7 +7,6 @@ namespace GeekCo\LaravelMaxClient\Support;
 use GeekCo\LaravelMaxClient\Models\MaxChat;
 use GeekCo\LaravelMaxClient\Models\MaxChatUser;
 use GeekCo\LaravelMaxClient\Models\MaxUser;
-use GeekCo\MaxPhpClient\Enum\UpdateType;
 
 final readonly class Config
 {
@@ -18,22 +17,25 @@ final readonly class Config
      * потребляет адаптер (реестр чатов, метаданные, профили, телефон). Единственное
      * место правды по дефолту — переопределяется webhook.update_types.
      *
+     * Значения — строки: enum UpdateType удалён в ядре v2.0.0, update_type в
+     * типизированном апдейте тоже строка.
+     *
      * @var list<string>
      */
     public const array DEFAULT_WEBHOOK_UPDATE_TYPES = [
-        UpdateType::MessageCreated->value,
-        UpdateType::MessageCallback->value,
-        UpdateType::MessageEdited->value,
-        UpdateType::MessageRemoved->value,
-        UpdateType::BotAdded->value,
-        UpdateType::BotStarted->value,
-        UpdateType::BotStopped->value,
-        UpdateType::BotRemoved->value,
-        UpdateType::DialogCleared->value,
-        UpdateType::DialogRemoved->value,
-        UpdateType::ChatTitleChanged->value,
-        UpdateType::UserAdded->value,
-        UpdateType::UserRemoved->value,
+        'message_created',
+        'message_callback',
+        'message_edited',
+        'message_removed',
+        'bot_added',
+        'bot_started',
+        'bot_stopped',
+        'bot_removed',
+        'dialog_cleared',
+        'dialog_removed',
+        'chat_title_changed',
+        'user_added',
+        'user_removed',
     ];
 
     public function apiToken(): string

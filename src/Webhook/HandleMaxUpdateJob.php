@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace GeekCo\LaravelMaxClient\Webhook;
 
 use GeekCo\LaravelMaxClient\Support\Logger;
+use GeekCo\LaravelMaxClient\Support\UpdateInfo;
 use GeekCo\MaxPhpClient\Dto\Update;
 use Illuminate\Contracts\Events\Dispatcher;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -35,10 +36,11 @@ final class HandleMaxUpdateJob implements ShouldQueue
     public function handle(Dispatcher $dispatcher): void
     {
         $logger = app(Logger::class);
+        $info = UpdateInfo::from($this->update);
         $context = [
-            'update_type' => $this->update->updateType->value,
-            'user_id' => $this->update->user?->userId,
-            'chat_id' => $this->update->chatId,
+            'update_type' => $this->update->updateType,
+            'user_id' => $info->userId,
+            'chat_id' => $info->chatId,
         ];
 
         $logger->log('info', 'MAX update job started', $context);

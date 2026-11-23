@@ -8,40 +8,44 @@
 > `git -C ../max-php-client tag --sort=-v:refname | head -1`. API-факты — `docs/api-reference.md` ядра,
 > раздел 9 «что делать при расхождении спека vs реальный API».
 
-## Текущее состояние (2026-10-20, состояние на момент последней синхронизации)
+## Текущее состояние (2026-11-23, ядро v2.0.0 выпущено)
 
-- Ядро: **`geekcodev/max-php-client` v1.1.11**, constraint в `composer.json` — `^1.1.11`.
-- Адаптер: последний релиз v1.2.2; `src/`, `tests/` синхронизированы с v1.1.11; Gate зелёный (lint 0, phpstan 0, phpunit
-  382/382, покрытие 97.64%, `composer audit` — 0 уязвимостей); интеграционный смоук не прогонялся (нет
-  `MAX_API_TOKEN` в окружении).
-- Сделано в последней сессии (ядро v1.1.10 → v1.1.11):
-    1. `composer.json`: `^1.1.10` → `^1.1.11`; `composer.lock` пересобран (`composer update geekcodev/max-php-client`).
-    2. Правок логики адаптера не потребовалось: контакт без `hash` ядро теперь разбирает, а `MaxContactService` и до
-       этого считал неподписанный контакт неподтверждённым (fail-closed) — изменилось только то, что апдейт больше не
-       отклоняется контроллером с `400 invalid_payload`.
-    3. Регрессионные тесты: `MaxContactServiceTest` (пустой `hash` → нет телефона, `isTrusted() === false`, вложение из
-       payload вебхука через `Update::fromArray()`), `PersistMaxUserPhoneListenerTest` (payload без `hash` доходит до
-       слушателя, `max_users.phone` пуст), `MaxWebhookControllerTest` (такой апдейт отвечает 200 и ставит job).
-    4. `src/Facades/Max.php`: у `addChatMembers()` снята пометка `deprecated в ядре с v1.1.6` — по release-notes v1.1.11
-       метод есть в спеке и официальной `schema.yaml`, с 9 сентября 2026 ограничен со стороны MAX, пометки об удалении
-       нет.
-    5. Документация: `README.md` (требования к ядру, раздел «Телефон из контакта»), строка истории в этом файле.
-- Не сделано (на усмотрение владельца): коммит/релиз адаптера. Изменения пока не закоммичены и не запушены.
+- Ядро: **`geekcodev/max-php-client` v2.0.0** (тег `v2.0.0` на Packagist, коммит `545583c`), constraint адаптера —
+  `^2.0`.
+- Адаптер: релиз **v2.0.0** (merge `new → main`, тег). `src/`, `tests/` переведены на типизированную модель; Gate
+  зелёный: lint 0/80, phpstan 0, phpunit 393/393, покрытие 96.97% (1407/1451), `composer audit` — 0.
+- Сделано в этой сессии (ядро v1.1.11 → v2.0.0):
+    1. `composer.json`: constraint ядра `^2.0` (на время приёмки был `dev-new`); `composer.lock` пересобран;
+       `symfony/*` и `laravel/framework` обновлены до версий без advisory.
+    2. Новый `src/Support/UpdateInfo.php`: единая точка извлечения `chat_id`/`user`/`user_id`/`chat_type`/`is_channel`
+       из типизированного апдейта.
+    3. `PersistMaxChatListener`: ветвление по подтипам (`MessageCreated/Edited`, `MessageCallback`,
+       `CommentCreated/Edited`, `ChatTitleChanged`, lifecycle `bot_*`); поведение реестра сохранено.
+    4. `PersistMaxUserPhoneListener`, `MaxContactService`: `ContactAttachment`, номер только из `vcf_info`
+       (`vcfPhone` удалён в ядре), лог через `UpdateInfo`.
+    5. `HandleMaxUpdateJob` — контекст лога из `UpdateInfo`; `MaxListenCommand` — `UpdateList::$updates`.
+    6. `Config::DEFAULT_WEBHOOK_UPDATE_TYPES` — строковые значения вместо enum `UpdateType`.
+    7. PHPDoc фасада пересобран под `ApiClient` v2 (guard-тест `MaxFacadeTest`).
+    8. Тесты: фабрики апдейтов на подтипах; удалены сценарии, невозможные в типизированной модели (апдейт без `chat_id`
+       или без `user` для lifecycle — теперь отклоняется разбором, добавлен тест на это).
+    9. Документация: `README.md`, `AGENTS.md`, этот файл, план и release notes.
+- Приёмка на dev-стенде пройдена 2026-11-23 (вебхуки, вложения, согласие, lifecycle). После тега — обновить
+  Filament-пакеты и приложение на `^2.0`.
 
 ## Точки контакта адаптера с ядром (что проверять при каждом обновлении)
 
-| Место в адаптере                           | Использует из ядра                                                                                                | Риск при ломающих изменениях ядра                       |
-|--------------------------------------------|-------------------------------------------------------------------------------------------------------------------|---------------------------------------------------------|
-| `src/MaxServiceProvider.php`               | `ApiClient::create`, `RetryStrategy`, `RateLimiter` (per-chat/global), `LongPollingRunner`, `WebAppDataValidator` | сигнатуры конструкторов/фабрик                          |
-| `src/Webhook/MaxWebhookController.php`     | `WebhookHandler::verify()/decode()`, `Dto\Update`, `InvalidResponseException`                                     | форма `decode()` ответа, поля `Update`                  |
-| `src/Webhook/HandleMaxUpdateJob.php`       | `Dto\Update` (тип свойства)                                                                                       | nullable/новые поля `Update`                            |
-| `src/Webhook/MaxUpdateReceived.php`        | `Dto\Update`                                                                                                      | тип свойства                                            |
-| `src/Listeners/PersistMaxChatListener.php` | `Update::$updateType/$user/$chatId`, `Enum\UpdateType`                                                            | **nullable-поля `Update` (был прецедент v1.0.3)**       |
-| `src/Console/Max*Command.php`              | `ApiClient::createSubscription/getSubscriptions/deleteSubscription`, `UpdateType`, `MaxApiException`              | возвращаемые типы (прецедент: v1.0.2 `SuccessResponse`) |
-| `src/Console/MaxListenCommand.php`         | `LongPollingRunner`, `Update`                                                                                     | сигнатура runner/handler                                |
-| `src/WebApp/*`                             | `WebAppDataValidator`, `Dto\WebAppIdentity`                                                                       | сигнатуры валидатора                                    |
-| `src/Facades/Max.php`                      | `ApiClient` (PHPDoc `@method`)                                                                                    | переименования методов ядра                             |
-| `src/Http/HttpClientFactory.php`           | PSR-18/17 (без прямых классов ядра)                                                                               | низкий                                                  |
+| Место в адаптере                           | Использует из ядра                                                                                                | Риск при ломающих изменениях ядра                             |
+|--------------------------------------------|-------------------------------------------------------------------------------------------------------------------|---------------------------------------------------------------|
+| `src/MaxServiceProvider.php`               | `ApiClient::create`, `RetryStrategy`, `RateLimiter` (per-chat/global), `LongPollingRunner`, `WebAppDataValidator` | сигнатуры конструкторов/фабрик                                |
+| `src/Webhook/MaxWebhookController.php`     | `WebhookHandler::verify()/decode()`, `Dto\Update`, `InvalidResponseException`                                     | форма `decode()` ответа, поля `Update`                        |
+| `src/Webhook/HandleMaxUpdateJob.php`       | `Dto\Update` (тип свойства)                                                                                       | nullable/новые поля `Update`                                  |
+| `src/Webhook/MaxUpdateReceived.php`        | `Dto\Update`                                                                                                      | тип свойства                                                  |
+| `src/Listeners/PersistMaxChatListener.php` | `Support\UpdateInfo`, типизированные подтипы `Update`                                                             | **типы полей событий и обязательность user/chat_id (v2.0.0)** |
+| `src/Console/Max*Command.php`              | `ApiClient::createSubscription/getSubscriptions/deleteSubscription/getUpdates`, `MaxApiException`                 | возвращаемые типы (`UpdateList`, `SimpleQueryResult`)         |
+| `src/Console/MaxListenCommand.php`         | `LongPollingRunner`, `Update`                                                                                     | сигнатура runner/handler                                      |
+| `src/WebApp/*`                             | `WebAppDataValidator`, `Dto\WebAppIdentity`                                                                       | сигнатуры валидатора                                          |
+| `src/Facades/Max.php`                      | `ApiClient` (PHPDoc `@method`)                                                                                    | переименования методов ядра                                   |
+| `src/Http/HttpClientFactory.php`           | PSR-18/17 (без прямых классов ядра)                                                                               | низкий                                                        |
 
 ## Процедура обновления при новом релизе ядра (чек-лист)
 
@@ -111,6 +115,13 @@
   обновлением зависимости. Constraint адаптера — `^1.1.11`. Единственное, что стоит держать в голове: значение
   `ChatStatus::Suspended` в ядре — потребители исчерпывающего `match (ChatStatus)` обязаны добавить `default`
   (enum реестра адаптера `Enums\MaxChatStatus` с ним не пересекается).
+
+- **v2.0.0 (ядро, breaking)**: `Update` — abstract-база с 19 подтипами, enum `UpdateType`/`AttachmentType`/`ButtonType`
+  удалён, `getUpdates()` → `UpdateList`, `getUpdatesBatch()` удалён, `SuccessResponse` → `SimpleQueryResult`,
+  `UploadedInfo` → `UploadEndpoint`, `vcfPhone` удалён из входящего контакта, `Callback::$message` удалён, методы
+  `sendChatAction`/`answerCallback`/`getCommentById`/`getVideoAttachmentDetails`. Адаптер: `Support\UpdateInfo`,
+  ветвление по подтипам, строковые типы подписки, PHPDoc фасада, тесты. Релиз адаптера — major (v2.0.0) после серверной
+  проверки.
 
 ## Прочие заметки
 

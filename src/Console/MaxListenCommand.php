@@ -49,17 +49,17 @@ final class MaxListenCommand extends Command
 
     private function handleOnce(ApiClient $api, Config $config): int
     {
-        $updates = $api->getUpdates(
+        $batch = $api->getUpdates(
             limit: $config->pollingLimit(),
             timeout: $config->pollingTimeout(),
             marker: $this->markerOption(),
         );
 
-        foreach ($updates as $update) {
+        foreach ($batch->updates as $update) {
             HandleMaxUpdateJob::dispatch($update)->onQueue($config->webhookQueue());
         }
 
-        $this->info(sprintf('Обработано апдейтов: %d.', count($updates)));
+        $this->info(sprintf('Обработано апдейтов: %d.', count($batch->updates)));
 
         return self::SUCCESS;
     }

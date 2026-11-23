@@ -111,7 +111,9 @@ class MaxChat extends Model
             return $name;
         }
 
-        return 'chat ' . $this->chat_id;
+        $fallback = __('laravel-max-client::chat.fallback', ['id' => $this->chat_id]);
+
+        return \is_string($fallback) ? $fallback : 'chat '.$this->chat_id;
     }
 
     public function isGroup(): bool

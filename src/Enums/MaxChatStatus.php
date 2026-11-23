@@ -12,10 +12,8 @@ enum MaxChatStatus: string
 
     public function label(): string
     {
-        return match ($this) {
-            self::Active => 'Активен',
-            self::Stopped => 'Остановлен',
-            self::Removed => 'Удалён',
-        };
+        $label = __('laravel-max-client::enums.chat_status.'.$this->value);
+
+        return \is_string($label) ? $label : $this->value;
     }
 }

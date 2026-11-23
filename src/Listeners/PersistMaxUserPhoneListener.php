@@ -7,9 +7,11 @@ namespace GeekCo\LaravelMaxClient\Listeners;
 use GeekCo\LaravelMaxClient\Services\MaxContactService;
 use GeekCo\LaravelMaxClient\Support\Config;
 use GeekCo\LaravelMaxClient\Support\Logger;
+use GeekCo\LaravelMaxClient\Support\UpdateInfo;
 use GeekCo\LaravelMaxClient\Webhook\MaxUpdateReceived;
+use GeekCo\MaxPhpClient\Dto\Update\MessageCallbackUpdate;
+use GeekCo\MaxPhpClient\Dto\Update\MessageCreatedUpdate;
 use GeekCo\MaxPhpClient\Dto\User;
-use GeekCo\MaxPhpClient\Enum\UpdateType;
 
 /**
  * Запись телефона в max_users из подтверждённого вложения-контакта.
@@ -25,8 +27,9 @@ use GeekCo\MaxPhpClient\Enum\UpdateType;
  * аккаунта: новое значение побеждает, иначе он остался бы навсегда привязан к
  * старому. Сам факт смены фиксируется в логе без значений (OWASP A09).
  *
- * Обрабатываются лишь message_created и message_callback; чат не создаётся и
- * статус не меняется — это не реестр чатов.
+ * Обрабатываются лишь message_created и message_callback (типизированные
+ * подтипы Update ядра v2.0.0); чат не создаётся и статус не меняется — это не
+ * реестр чатов.
  */
 final class PersistMaxUserPhoneListener
 {
@@ -41,7 +44,7 @@ final class PersistMaxUserPhoneListener
     {
         $update = $event->update;
 
-        if (!\in_array($update->updateType, [UpdateType::MessageCreated, UpdateType::MessageCallback], true)) {
+        if (!$update instanceof MessageCreatedUpdate && !$update instanceof MessageCallbackUpdate) {
             return;
         }
 
@@ -51,14 +54,14 @@ final class PersistMaxUserPhoneListener
             return;
         }
 
-        $user = $update->user;
-        $userId = $user !== null ? $user->userId : $update->userId;
+        $info = UpdateInfo::from($update);
+        $userId = $info->userId;
 
         if ($userId === null) {
             return;
         }
 
-        $this->persist($user, $userId, $phone, $update->chatId);
+        $this->persist($info->user, $userId, $phone, $info->chatId);
     }
 
     private function persist(?User $user, int $userId, string $phone, ?int $chatId): void

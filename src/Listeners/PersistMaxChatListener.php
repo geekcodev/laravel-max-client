@@ -7,18 +7,31 @@ namespace GeekCo\LaravelMaxClient\Listeners;
 use GeekCo\LaravelMaxClient\Enums\MaxChatStatus;
 use GeekCo\LaravelMaxClient\Services\MaxChatProfileService;
 use GeekCo\LaravelMaxClient\Support\Config;
+use GeekCo\LaravelMaxClient\Support\UpdateInfo;
 use GeekCo\LaravelMaxClient\Webhook\MaxUpdateReceived;
 use GeekCo\MaxPhpClient\Dto\Update;
+use GeekCo\MaxPhpClient\Dto\Update\BotAddedToChatUpdate;
+use GeekCo\MaxPhpClient\Dto\Update\BotRemovedFromChatUpdate;
+use GeekCo\MaxPhpClient\Dto\Update\BotStartedUpdate;
+use GeekCo\MaxPhpClient\Dto\Update\BotStoppedUpdate;
+use GeekCo\MaxPhpClient\Dto\Update\ChatTitleChangedUpdate;
+use GeekCo\MaxPhpClient\Dto\Update\CommentCreatedUpdate;
+use GeekCo\MaxPhpClient\Dto\Update\CommentEditedUpdate;
+use GeekCo\MaxPhpClient\Dto\Update\MessageCallbackUpdate;
+use GeekCo\MaxPhpClient\Dto\Update\MessageCreatedUpdate;
+use GeekCo\MaxPhpClient\Dto\Update\MessageEditedUpdate;
 use GeekCo\MaxPhpClient\Dto\User;
-use GeekCo\MaxPhpClient\Enum\ChatType;
-use GeekCo\MaxPhpClient\Enum\UpdateType;
 use Illuminate\Support\Facades\Log;
 
 /**
  * Реестр чатов: upsert max_chats по апдейтам bot_added/bot_started/
- * bot_stopped/bot_removed (getChats deprecated — chat_id хранить через
+ * bot_stopped/bot_removed (getChats удалён — chat_id хранить через
  * подписку) и связь пользователей в max_chat_users. При наличии user в апдейте —
  * upsert в max_users.
+ *
+ * С ядра v2.0.0 Update — типизированная иерархия, плоских полей больше нет:
+ * контекст события извлекается через Support\UpdateInfo, а ветвление идёт по
+ * классу подтипа (instanceof), а не по строке update_type.
  *
  * max_chats хранит одну строку на чат, а не на пару «пользователь + чат»:
  * события bot_* — это события о боте в чате, а не о пользователе, поэтому user
@@ -55,23 +68,25 @@ final class PersistMaxChatListener
     public function handle(MaxUpdateReceived $event): void
     {
         $update = $event->update;
+        $info = UpdateInfo::from($update);
 
-        if ($update->message !== null || $update->comment !== null || $update->callback !== null) {
-            $this->touchExistingChat($update);
-
-            return;
-        }
-
-        if ($update->updateType === UpdateType::ChatTitleChanged) {
-            $this->applyTitleFromUpdate($update);
+        if ($this->isActivity($update)) {
+            $this->touchExistingChat($info);
 
             return;
         }
 
-        $status = match ($update->updateType) {
-            UpdateType::BotAdded, UpdateType::BotStarted => MaxChatStatus::Active,
-            UpdateType::BotStopped => MaxChatStatus::Stopped,
-            UpdateType::BotRemoved => MaxChatStatus::Removed,
+        if ($update instanceof ChatTitleChangedUpdate) {
+            $this->applyTitle($info);
+
+            return;
+        }
+
+        $status = match (true) {
+            $update instanceof BotAddedToChatUpdate,
+            $update instanceof BotStartedUpdate => MaxChatStatus::Active,
+            $update instanceof BotStoppedUpdate => MaxChatStatus::Stopped,
+            $update instanceof BotRemovedFromChatUpdate => MaxChatStatus::Removed,
             default => null,
         };
 
@@ -79,43 +94,52 @@ final class PersistMaxChatListener
             return;
         }
 
-        $chatId = $update->chatId;
+        $chatId = $info->chatId;
 
         if ($chatId === null) {
             Log::warning('MAX chat update without chat_id skipped.', [
-                'update_type' => $update->updateType->value,
+                'update_type' => $update->updateType,
             ]);
 
             return;
         }
 
-        $user = $update->user;
-        $userId = $user !== null ? $user->userId : $update->userId;
-
-        if ($user !== null && $userId !== null) {
-            $this->upsertUser($user, $userId);
+        if ($info->user !== null && $info->userId !== null) {
+            $this->upsertUser($info->user, $info->userId);
         }
 
-        $this->upsertChat($update, $chatId, $status);
+        $this->upsertChat($info, $chatId, $status);
 
-        if ($userId !== null) {
-            $this->upsertChatLink($chatId, $userId, $status);
+        if ($info->userId !== null) {
+            $this->upsertChatLink($chatId, $info->userId, $status);
         }
 
-        $this->syncMetadataIfNeeded($update);
+        $this->syncMetadataIfNeeded($update, $chatId);
+    }
+
+    /**
+     * Апдейты активности: сообщение, редактирование, нажатие кнопки, комментарий.
+     */
+    private function isActivity(Update $update): bool
+    {
+        return $update instanceof MessageCreatedUpdate
+            || $update instanceof MessageEditedUpdate
+            || $update instanceof MessageCallbackUpdate
+            || $update instanceof CommentCreatedUpdate
+            || $update instanceof CommentEditedUpdate;
     }
 
     /**
      * Одна строка на чат: создаём или обновляем по chat_id.
      */
-    private function upsertChat(Update $update, int $chatId, MaxChatStatus $status): void
+    private function upsertChat(UpdateInfo $info, int $chatId, MaxChatStatus $status): void
     {
         $data = [
             'status' => $status,
             'last_activity_at' => now(),
         ];
 
-        $chatType = $this->resolveChatType($update);
+        $chatType = $info->resolveChatType();
 
         if ($chatType !== null) {
             $data['chat_type'] = $chatType;
@@ -168,30 +192,15 @@ final class PersistMaxChatListener
         );
     }
 
-    private function resolveChatType(Update $update): ?ChatType
-    {
-        $chatType = $update->message?->recipient->chatType
-            ?? $update->comment?->recipient->chatType
-            ?? $update->callback?->message?->recipient->chatType;
-
-        if (\is_string($chatType)) {
-            return ChatType::tryFrom($chatType);
-        }
-
-        return $update->isChannel === true
-            ? ChatType::Channel
-            : null;
-    }
-
     /**
      * Апдейт активности: дозаполняет chat_type у существующего чата и двигает
      * last_activity_at. Чат не создаёт и статус не меняет. Связь пользователя,
      * если он пришёл, обновляется: апдейт активности — это как раз факт
      * взаимодействия пользователя с ботом.
      */
-    private function touchExistingChat(Update $update): void
+    private function touchExistingChat(UpdateInfo $info): void
     {
-        $chatId = $update->chatId;
+        $chatId = $info->chatId;
 
         if ($chatId === null) {
             return;
@@ -199,7 +208,7 @@ final class PersistMaxChatListener
 
         $chatModel = $this->config->chatsModel();
 
-        $chatType = $this->resolveChatType($update);
+        $chatType = $info->resolveChatType();
 
         if ($chatType !== null) {
             $chatModel::query()
@@ -212,18 +221,15 @@ final class PersistMaxChatListener
             ->where('chat_id', $chatId)
             ->update(['last_activity_at' => now()]);
 
-        $user = $update->user;
-        $userId = $user !== null ? $user->userId : $update->userId;
-
-        if ($user === null || $userId === null) {
+        if ($info->user === null || $info->userId === null) {
             return;
         }
 
-        $this->upsertUser($user, $userId);
+        $this->upsertUser($info->user, $info->userId);
 
         if ($chatModel::query()->where('chat_id', $chatId)->exists()) {
             $this->config->chatUsersModel()::query()->updateOrCreate(
-                ['chat_id' => $chatId, 'user_id' => $userId],
+                ['chat_id' => $chatId, 'user_id' => $info->userId],
                 ['last_activity_at' => now()],
             );
         }
@@ -234,10 +240,10 @@ final class PersistMaxChatListener
      * пишется в строку чата. Пустой title игнорируется, чтобы не затереть уже
      * известное название.
      */
-    private function applyTitleFromUpdate(Update $update): void
+    private function applyTitle(UpdateInfo $info): void
     {
-        $chatId = $update->chatId;
-        $title = $update->title === null ? '' : trim($update->title);
+        $chatId = $info->chatId;
+        $title = $info->title === null ? '' : trim($info->title);
 
         if ($chatId === null || $title === '') {
             return;
@@ -261,19 +267,13 @@ final class PersistMaxChatListener
      * Правила выбора записи и передачи уже известных значений живут в
      * MaxChatProfileService::ensureMetadata(): здесь только условия «когда».
      */
-    private function syncMetadataIfNeeded(Update $update): void
+    private function syncMetadataIfNeeded(Update $update, int $chatId): void
     {
         if (!$this->config->chatsFetchMetadata()) {
             return;
         }
 
-        if (!\in_array($update->updateType, [UpdateType::BotAdded, UpdateType::BotStarted], true)) {
-            return;
-        }
-
-        $chatId = $update->chatId;
-
-        if ($chatId === null) {
+        if (!$update instanceof BotAddedToChatUpdate && !$update instanceof BotStartedUpdate) {
             return;
         }
 

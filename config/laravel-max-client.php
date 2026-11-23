@@ -2,6 +2,9 @@
 
 declare(strict_types=1);
 
+use GeekCo\LaravelMaxClient\Enums\MaxChatPermission;
+use GeekCo\LaravelMaxClient\Enums\MaxUserPermission;
+
 return [
 
     /*
@@ -160,6 +163,11 @@ return [
     | middleware кладёт user_id/chat_id; contact_confirmed — ключ флага
     | подтверждённого контакта (значение — user_id, WebAppSession::confirm()).
     |
+    | Подтверждённый контакт из моста window.WebApp.requestContact() пакет
+    | сохраняет в max_users.phone с phone_verified_at через
+    | PersistWebAppContactPhoneListener. Отдельной настройки нет: контакт уже
+    | проверен подписью WebAppContactVerifier.
+    |
     */
 
     'webapp' => [
@@ -204,7 +212,7 @@ return [
     |--------------------------------------------------------------------------
     |
     | Готовая реализация документированной практики MAX: chat_id хранить через
-    | подписку на bot_added/bot_started (getChats deprecated). При enabled=true
+    | подписку на bot_added/bot_started (getChats удалён в ядре v2.0.0). При enabled=true
     | пакет регистрирует слушателя MaxUpdateReceived, который обновляет таблицу
     | max_chats (одна строка на чат), связи с пользователями — в max_chat_users,
     | профили — в max_users. Миграции подгружаются провайдером из каталога
@@ -226,6 +234,41 @@ return [
         'chat_check_interval' => (int) (\in_array(env('MAX_CHATS_CHAT_CHECK_INTERVAL'), [null, ''], true)
             ? env('MAX_CHATS_TITLE_CHECK_INTERVAL', 0)
             : env('MAX_CHATS_CHAT_CHECK_INTERVAL')),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Права на локальные записи (Policy)
+    |--------------------------------------------------------------------------
+    |
+    | Пакет регистрирует Gate::policy для моделей users.model и chats.model.
+    | Код ресурса (max_user / max_chat) — префикс permission-строки, ability —
+    | view.any / view / edit / delete / manage. Значения проверяются через
+    | Gate::forUser(...)->allows(), поэтому работают spatie/laravel-permission и
+    | обычные Gate::define. Управление записью (edit/delete) и синхронизация
+    | (manage) разделены. Создание в контракт не входит: реестр наполняется
+    | вебхуками, ручное создание пакетом не поддерживается.
+    |
+    | ability view.any хранится ключом view_any, потому что точка в ключе
+    | массива ломает доступ через config().
+    |
+    */
+
+    'permissions' => [
+        'max_user' => [
+            'view_any' => (string) env('MAX_PERMISSION_USER_VIEW_ANY', MaxUserPermission::ViewAny->value),
+            'view' => (string) env('MAX_PERMISSION_USER_VIEW', MaxUserPermission::View->value),
+            'edit' => (string) env('MAX_PERMISSION_USER_EDIT', MaxUserPermission::Edit->value),
+            'delete' => (string) env('MAX_PERMISSION_USER_DELETE', MaxUserPermission::Delete->value),
+            'manage' => (string) env('MAX_PERMISSION_USER_MANAGE', MaxUserPermission::Manage->value),
+        ],
+        'max_chat' => [
+            'view_any' => (string) env('MAX_PERMISSION_CHAT_VIEW_ANY', MaxChatPermission::ViewAny->value),
+            'view' => (string) env('MAX_PERMISSION_CHAT_VIEW', MaxChatPermission::View->value),
+            'edit' => (string) env('MAX_PERMISSION_CHAT_EDIT', MaxChatPermission::Edit->value),
+            'delete' => (string) env('MAX_PERMISSION_CHAT_DELETE', MaxChatPermission::Delete->value),
+            'manage' => (string) env('MAX_PERMISSION_CHAT_MANAGE', MaxChatPermission::Manage->value),
+        ],
     ],
 
     /*
