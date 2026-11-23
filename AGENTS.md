@@ -13,14 +13,13 @@
 - **Что это.** Laravel-пакет **`geekcodev/laravel-max-client`** — тонкий фреймворк-адаптер поверх framework-agnostic
   ядра **`geekcodev/max-php-client`** (клиент для **MAX Messenger Bot API**,
   https://max.ru). Репозиторий/рабочая папка — `laravel-max-client`.
-- **Статус.** Последний выпущенный релиз адаптера — **v1.2.3** (тег `v1.2.3`, GitHub Release, Packagist
-  `geekcodev/laravel-max-client`). Актуальную версию всегда уточняй по `git tag --sort=-v:refname | head -1` и
-  `git log --oneline -10`, а не по этому файлу. Незакоммиченная работа лежит в `new` (ветка синхронизации с ядром
-  v2.0.0).
-- **Ядро.** `geekcodev/max-php-client` (namespace `GeekCo\MaxPhpClient`) — целевая версия **2.0.0** (типизированные
-  `Update`, вложения, кнопки, разметка). Пока тега `v2.0.0` нет, ветка `new` ставит ядро из Packagist по constraint
-  `dev-new` (dev-ветка `new`); после выпуска — `^2.0`. Path-repositories в `composer.json` не используются.
-  **Фактические версии проверяй динамически**: `composer show geekcodev/max-php-client` и
+- **Статус.** Последний выпущенный релиз адаптера — **v2.0.0** (тег `v2.0.0` на merge-коммите `new → main`, GitHub
+  Release и Packagist `geekcodev/laravel-max-client` — сразу после установки тега). В версии: переход на типизированную
+  модель ядра v2.0.0 (см. `.agents/release/RELEASE_NOTES_v2.0.0.md`). Актуальную версию всегда уточняй по
+  `git tag --sort=-v:refname | head -1` и `git log --oneline -10`, а не по этому файлу.
+- **Ядро.** `geekcodev/max-php-client` (namespace `GeekCo\MaxPhpClient`) — **v2.0.0** (типизированные `Update`,
+  вложения, кнопки, разметка), constraint `^2.0`; path-repositories не используются. **Фактические версии проверяй
+  динамически**: `composer show geekcodev/max-php-client` и
   `git -C ../max-php-client tag --sort=-v:refname | head -1`. Исправления ядра адаптер наследует автоматически вместе с
   обновлением зависимости. Источник истины по API — `docs/api-reference.md` ядра и
   https://github.com/geekcodev/max-openapi (OpenAPI 3.1).
@@ -34,8 +33,8 @@
 
 - `main` — стабильная, соответствует релизам.
 - `dev` — рабочая ветка; изменения сначала здесь.
-- `new` — ветка синхронизации с ядром v2.0.0: typed `Update`, привязка ядра через path-repository. После выпуска ядра
-  v2.0.0 и серверной проверки вебхуков вливается в `dev`.
+- `new` — ветка синхронизации с ядром v2.0.0 (typed `Update`, constraint `^2.0`); после приёмки на dev-стенде и релиза
+  вливается в `dev`.
 - Релизный процесс: PR `dev → main` → тег `vX.Y.Z` → GitHub Release → Packagist (webhook-автообновление).
 - `version` в `composer.json` **не указывается** — версия берётся из git-тегов.
 - `.env` — untracked (в `.gitignore`): `MAX_API_TOKEN`, `MAX_WEBHOOK_SECRET`. **Никогда не коммитить и не логировать
@@ -442,8 +441,7 @@ scripts/check-coverage.php         порог покрытия строк (по 
   токена `markTestSkipped` (не падать).
 - `composer.json` constraints на момент разработки: `php ^8.4`, `geekcodev/max-php-client ^2.0` (типизированные
   `Update` и 19 подтипов событий, `Attachment`/`AttachmentRequest`/`Button`/`MarkupElement`, `UpdateList`,
-  `SimpleQueryResult`, `UploadEndpoint`, `ChatMembersList`, `ModifyMembersResult`; локально на ветке `new` —
-  path-repository на `../max-php-client` и `dev-new as 2.0.0` до выпуска ядра),
+  `SimpleQueryResult`, `UploadEndpoint`, `ChatMembersList`, `ModifyMembersResult`),
   `laravel/framework ^12.0|^13.0`, `guzzlehttp/guzzle ^7.15`
   (обязателен как PSR-18 по умолчанию), `illuminate/support`/`illuminate/queue`/`illuminate/routing` — через
   `laravel/framework`; dev — Testbench под поддерживаемую версию Laravel, phpunit ^11.5, phpstan ^2.0,
@@ -607,9 +605,7 @@ source .env && docker run --rm --network host \
     конфиге — `view_any` (с подчёркиванием), а permission-строки — `max_user.view.any`; точка в ключе массива ломает
     `config()`.
 
-- CI на ветке `new` до выпуска ядра v2.0.0 красный по построению: `composer install` в контейнере не находит
-  `../max-php-client` (path-repository). Ветку не пушим и PR не открываем, пока ядро не выпущено; после выпуска
-  `composer.json` переключается на `^2.0` без `repositories` (шаг 14 плана `.agents/plans/2026-11-17-core-v2-sync.md`).
+- Ядро v2.0.0 выпущено, зависимости адаптера — `^2.0`; CI на `new` собирается из Packagist без path-repositories.
 
 ## 10. Чек-лист «production-grade» (самооценка при доработках)
 

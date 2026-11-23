@@ -8,15 +8,15 @@
 > `git -C ../max-php-client tag --sort=-v:refname | head -1`. API-факты — `docs/api-reference.md` ядра,
 > раздел 9 «что делать при расхождении спека vs реальный API».
 
-## Текущее состояние (2026-11-17, ветка `new`, ядро v2.0.0 не выпущено)
+## Текущее состояние (2026-11-23, ядро v2.0.0 выпущено)
 
-- Ядро: **`geekcodev/max-php-client` v2.0.0** (ветка `new`, коммит `76c137b`). Локально подключено path-repository на
-  `../max-php-client` с `dev-new as 2.0.0`; после выпуска ядра — `^2.0` и удаление `repositories`.
-- Адаптер: `src/`, `tests/` переведены на типизированную модель; Gate зелёный: lint 0/70, phpstan 0, phpunit 371/371,
-  покрытие 96.93% (1325/1367), `composer audit` — 0.
+- Ядро: **`geekcodev/max-php-client` v2.0.0** (тег `v2.0.0` на Packagist, коммит `545583c`), constraint адаптера —
+  `^2.0`.
+- Адаптер: релиз **v2.0.0** (merge `new → main`, тег). `src/`, `tests/` переведены на типизированную модель; Gate
+  зелёный: lint 0/80, phpstan 0, phpunit 393/393, покрытие 96.97% (1407/1451), `composer audit` — 0.
 - Сделано в этой сессии (ядро v1.1.11 → v2.0.0):
-    1. `composer.json`: путь к ядру и `dev-new as 2.0.0`; `composer.lock` пересобран; `symfony/*` и `laravel/framework`
-       обновлены до версий без advisory.
+    1. `composer.json`: constraint ядра `^2.0` (на время приёмки был `dev-new`); `composer.lock` пересобран;
+       `symfony/*` и `laravel/framework` обновлены до версий без advisory.
     2. Новый `src/Support/UpdateInfo.php`: единая точка извлечения `chat_id`/`user`/`user_id`/`chat_type`/`is_channel`
        из типизированного апдейта.
     3. `PersistMaxChatListener`: ветвление по подтипам (`MessageCreated/Edited`, `MessageCallback`,
@@ -29,7 +29,8 @@
     8. Тесты: фабрики апдейтов на подтипах; удалены сценарии, невозможные в типизированной модели (апдейт без `chat_id`
        или без `user` для lifecycle — теперь отклоняется разбором, добавлен тест на это).
     9. Документация: `README.md`, `AGENTS.md`, этот файл, план и release notes.
-- Не сделано: серверная проверка вебхуков в тестовом проекте и релизы (ядро v2.0.0 и адаптер major) — ждут её.
+- Приёмка на dev-стенде пройдена 2026-11-23 (вебхуки, вложения, согласие, lifecycle). После тега — обновить
+  Filament-пакеты и приложение на `^2.0`.
 
 ## Точки контакта адаптера с ядром (что проверять при каждом обновлении)
 
